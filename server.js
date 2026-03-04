@@ -66,6 +66,125 @@ app.use(express.static(path.join(__dirname, 'public')));
 
 // ==================== API 路由 ====================
 
+// 交易机器人状态
+app.get('/api/trader-status', (req, res) => {
+  try {
+    // 读取交易机器人日志获取最新状态
+    const logPath = path.join(__dirname, 'logs', 'trader_nfi.log');
+    let lastLines = [];
+    let status = 'unknown';
+    let lastSignal = {};
+    
+    if (fs.existsSync(logPath)) {
+      const logContent = fs.readFileSync(logPath, 'utf-8');
+      const lines = logContent.split('\n').filter(line => line.trim());
+      lastLines = lines.slice(-20); // 最后20行
+      
+      // 解析最新状态
+      for (let i = lines.length - 1; i >= 0; i--) {
+        const line = lines[i];
+        if (line.includes('no-entry')) {
+          const match = line.match(/(BTC|ETH)\s+no-entry\s+\(([^)]+)\)/);
+          if (match) {
+            lastSignal[match[1]] = { action: 'HOLD', reason: match[2] };
+          }
+        }
+        if (line.includes('NostalgiaForInfinity-inspired trader started')) {
+          status = 'running';
+          break;
+        }
+      }
+    }
+    
+    // 计算运行时间
+    const traderProcess = require('child_process').execSync('ps -o etime= -p $(pgrep -f "auto_trader_nostalgia_for_infinity.py") 2>/dev/null || echo "unknown"', { encoding: 'utf-8' }).trim();
+    
+    res.json({
+      success: true,
+      timestamp: Date.now(),
+      status: status,
+      uptime: traderProcess,
+      strategy: 'NFI (NostalgiaForInfinity)',
+      config: {
+        tradeSide: { BTC: 'short_only', ETH: 'both' },
+        checkInterval: '60s',
+        cooldown: '4h'
+      },
+      lastSignals: lastSignal,
+      recentLogs: lastLines.slice(-5)
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
+// 所有交易机器人状态汇总 (当前运行5个)
+app.get('/api/traders-status', (req, res) => {
+  try {
+    const traders = [
+      { id: 'nfi', name: 'NFI原版', logFile: 'trader_nfi.log', script: 'auto_trader_nostalgia_for_infinity.py' },
+      { id: 'boll_macd', name: 'BOLL+MACD共振V3', logFile: 'trader_01_boll_macd.log', script: 'trader_01_boll_macd.py' },
+      { id: 'supertrend', name: 'SuperTrend×4.0', logFile: 'trader_04_supertrend.log', script: 'trader_04_supertrend.py' },
+      { id: 'adx', name: 'ADX趋势过滤', logFile: 'trader_05_adx.log', script: 'trader_05_adx.py' }
+    ];
+    
+    const results = traders.map(trader => {
+      const logPath = path.join(__dirname, 'logs', trader.logFile);
+      let status = 'offline';
+      let lastSignal = {};
+      let lastLines = [];
+      
+      // 检查进程是否运行
+      try {
+        const { execSync } = require('child_process');
+        execSync(`pgrep -f "${trader.script}"`, { stdio: 'ignore' });
+        status = 'running';
+      } catch (e) {
+        status = 'offline';
+      }
+      
+      // 读取日志
+      if (fs.existsSync(logPath)) {
+        const logContent = fs.readFileSync(logPath, 'utf-8');
+        const lines = logContent.split('\n').filter(line => line.trim());
+        lastLines = lines.slice(-10);
+        
+        // 解析最新信号
+        for (let i = lines.length - 1; i >= Math.max(0, lines.length - 20); i--) {
+          const line = lines[i];
+          // BTC/ETH 信号
+          const match = line.match(/(BTC|ETH)\s+(HOLD|LONG|SHORT).*?:\s*(.+)/);
+          if (match && !lastSignal[match[1]]) {
+            lastSignal[match[1]] = { action: match[2], reason: match[3] };
+          }
+        }
+      }
+      
+      return {
+        id: trader.id,
+        name: trader.name,
+        status: status,
+        lastSignal: lastSignal,
+        recentLogs: lastLines.slice(-3)
+      };
+    });
+    
+    res.json({
+      success: true,
+      timestamp: Date.now(),
+      traders: results
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+
 // NFI 策略指标计算（与 auto_trader_nostalgia_for_infinity.py 一致）
 const NFI_EMA_FAST = 20, NFI_EMA_TREND = 50, NFI_EMA_LONG = 200;
 const NFI_RSI_FAST = 4, NFI_RSI_MAIN = 14;
@@ -568,7 +687,7 @@ function getHTML(content) {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>小牛马的炒币日记 🐴</title>
+  <title>赛博牛马的交易日志 🤖🐴</title>
   <link rel="icon" href="/favicon-32.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -1288,7 +1407,7 @@ function getHTML(content) {
   <div class="container">
     ${content}
     <footer>
-      <p>🐴 小牛马 × AI Trading Experiment</p>
+      <p>🤖🐴 赛博牛马 × AI Trading Experiment</p>
       <p style="margin-top: 10px; font-size: 0.8em;">Powered by OpenClaw</p>
     </footer>
   </div>
@@ -1352,8 +1471,8 @@ app.get('/', (req, res) => {
   
   const content = `
     <header>
-      <img src="/logo_256.png" alt="小牛马" class="logo">
-      <h1>🐴 小牛马的交易日记</h1>
+      <img src="/logo_256.png" alt="赛博牛马" class="logo">
+      <h1>🤖🐴 赛博牛马的交易日志</h1>
       <p class="subtitle">// AI Trading Experiment v1.0</p>
       <div style="margin-top: 20px; display: flex; justify-content: center; gap: 15px; flex-wrap: wrap;">
         <a href="/" style="background: var(--bg-card); padding: 8px 16px; border-radius: 4px; border: 1px solid var(--border); font-size: 0.9em;">🏠 首页</a>
@@ -1377,6 +1496,37 @@ app.get('/', (req, res) => {
       </div>
       <div class="position-footer">
         <span id="update-time">--</span>
+      </div>
+    </div>
+    
+    <!-- 交易机器人状态 -->
+    <div class="position-card" id="trader-status-card" style="display:none; border-color: var(--cyber-blue);">
+      <div class="position-header">
+        <h3 style="color: var(--cyber-blue);">🤖 交易机器人状态</h3>
+        <span class="live-badge">● LIVE</span>
+      </div>
+      <div id="trader-status-content">
+        <div class="loading">加载中...</div>
+      </div>
+      <div class="position-footer">
+        <span id="trader-status-update-time">--</span>
+      </div>
+    </div>
+    
+    <!-- 所有交易机器人状态汇总 -->
+    <div class="position-card" id="all-traders-card" style="border-color: var(--cyber-purple);">
+      <div class="position-header">
+        <h3 style="color: var(--cyber-purple);">🤖🐮 赛博牛马交易军团 (4个核心策略)</h3>
+        <span class="live-badge">● LIVE</span>
+      </div>
+      <div id="all-traders-content">
+        <div class="loading">加载中...</div>
+      </div>
+      <div style="margin-top: 10px; padding: 10px; background: var(--bg-card); border-radius: 6px; font-size: 0.75em; color: var(--text-muted);">
+        📝 当前运行: NFI原版 | BOLL+MACD V3 | SuperTrend×4.0 | ADX优化版
+      </div>
+      <div class="position-footer">
+        <span id="all-traders-update-time">--</span>
       </div>
     </div>
     
@@ -1673,11 +1823,203 @@ app.get('/', (req, res) => {
         }
       }
       
+      // 交易机器人状态更新
+      async function updateTraderStatus() {
+        try {
+          const res = await fetch('/api/trader-status');
+          const data = await res.json();
+          
+          if (!data.success) {
+            document.getElementById('trader-status-content').innerHTML = '<div class="error">获取状态失败</div>';
+            return;
+          }
+          
+          const card = document.getElementById('trader-status-card');
+          card.style.display = 'block';
+          
+          let html = '';
+          
+          // 运行状态
+          const statusColor = data.status === 'running' ? 'var(--accent)' : 'var(--cyber-pink)';
+          const statusText = data.status === 'running' ? '🟢 运行中' : '🔴 异常';
+          
+          html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 15px;">';
+          html += '<div style="padding: 12px; background: var(--bg-card); border-radius: 8px; text-align: center;">';
+          html += '<div style="font-size: 0.8em; color: var(--text-muted); margin-bottom: 4px;">运行状态</div>';
+          html += '<div style="font-size: 1.1em; font-weight: 700; color: ' + statusColor + ';">' + statusText + '</div>';
+          html += '</div>';
+          html += '<div style="padding: 12px; background: var(--bg-card); border-radius: 8px; text-align: center;">';
+          html += '<div style="font-size: 0.8em; color: var(--text-muted); margin-bottom: 4px;">运行时长</div>';
+          html += '<div style="font-size: 1em; font-weight: 600; color: var(--cyber-blue);">' + (data.uptime || 'unknown') + '</div>';
+          html += '</div>';
+          html += '</div>';
+          
+          // 策略配置
+          html += '<div style="margin: 12px 0; padding: 12px; background: var(--bg-card); border-radius: 8px;">';
+          html += '<div style="font-size: 0.85em; color: var(--text-muted); margin-bottom: 8px;">📋 策略配置</div>';
+          html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-size: 0.9em;">';
+          html += '<div>BTC: <span style="color: var(--cyber-pink);">' + (data.config?.tradeSide?.BTC || 'short_only') + '</span></div>';
+          html += '<div>ETH: <span style="color: var(--accent);">' + (data.config?.tradeSide?.ETH || 'both') + '</span></div>';
+          html += '<div>检查间隔: ' + (data.config?.checkInterval || '60s') + '</div>';
+          html += '<div>冷却期: ' + (data.config?.cooldown || '4h') + '</div>';
+          html += '</div>';
+          html += '</div>';
+          
+          // 最新信号
+          if (data.lastSignals) {
+            html += '<div style="margin: 12px 0; padding: 12px; background: var(--bg-card); border-radius: 8px;">';
+            html += '<div style="font-size: 0.85em; color: var(--text-muted); margin-bottom: 8px;">📊 最新信号</div>';
+            html += '<div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">';
+            
+            for (const [symbol, signal] of Object.entries(data.lastSignals)) {
+              const isHold = signal.action === 'HOLD';
+              const signalColor = isHold ? 'var(--text-muted)' : (signal.action === 'BUY' ? 'var(--accent)' : 'var(--cyber-pink)');
+              const signalIcon = isHold ? '⏳' : (signal.action === 'BUY' ? '🟢' : '🔴');
+              
+              html += '<div style="padding: 8px; background: var(--bg-secondary); border-radius: 6px; text-align: center;">';
+              html += '<div style="font-weight: 600;">' + symbol + '</div>';
+              html += '<div style="font-size: 0.85em; color: ' + signalColor + ';">' + signalIcon + ' ' + (isHold ? '等待中' : signal.action) + '</div>';
+              if (signal.reason) {
+                html += '<div style="font-size: 0.75em; color: var(--text-muted);">' + signal.reason + '</div>';
+              }
+              html += '</div>';
+            }
+            
+            html += '</div>';
+            html += '</div>';
+          }
+          
+          // 最近日志
+          if (data.recentLogs && data.recentLogs.length > 0) {
+            html += '<div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid var(--border);">';
+            html += '<div style="font-size: 0.8em; color: var(--text-muted); margin-bottom: 6px;">📝 最近日志</div>';
+            html += '<div style="font-size: 0.75em; font-family: monospace; color: var(--text-secondary);">';
+            data.recentLogs.slice(-3).forEach(log => {
+              const logParts = log.split(' - ');
+              if (logParts.length >= 3) {
+                html += '<div style="margin: 2px 0;">' + logParts[0].split(' ')[1] + ' ' + logParts[2] + '</div>';
+              }
+            });
+            html += '</div>';
+            html += '</div>';
+          }
+          
+          document.getElementById('trader-status-content').innerHTML = html;
+          document.getElementById('trader-status-update-time').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+          
+        } catch (err) {
+          console.error('Failed to update trader status:', err);
+        }
+      }
+      
+      // 所有交易机器人状态汇总
+      async function updateAllTradersStatus() {
+        try {
+          const res = await fetch('/api/traders-status');
+          const data = await res.json();
+          
+          if (!data.success) {
+            document.getElementById('all-traders-content').innerHTML = '<div class="error">获取状态失败</div>';
+            return;
+          }
+          
+          const content = document.getElementById('all-traders-content');
+          
+          // 统计在线数量
+          const runningCount = data.traders.filter(t => t.status === 'running').length;
+          const totalCount = data.traders.length;
+          
+          let html = '<div style="margin-bottom: 15px; text-align: center;">';
+          html += '<span style="font-size: 1.2em; color: var(--accent);">🟢 ' + runningCount + '</span>';
+          html += '<span style="color: var(--text-muted);"> / ' + totalCount + ' 在线</span>';
+          html += '</div>';
+          
+          html += '<div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 12px;">';
+          
+          data.traders.forEach(trader => {
+            const isRunning = trader.status === 'running';
+            const statusColor = isRunning ? 'var(--accent)' : 'var(--cyber-pink)';
+            const statusIcon = isRunning ? '🟢' : '🔴';
+            
+            html += '<div style="padding: 12px; background: var(--bg-card); border-radius: 8px; border-left: 3px solid ' + statusColor + ';">';
+            html += '<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">';
+            html += '<div style="font-weight: 600; color: var(--text-primary);">' + statusIcon + ' ' + trader.name + '</div>';
+            html += '<div style="font-size: 0.75em; color: ' + statusColor + ';">' + (isRunning ? '运行中' : '离线') + '</div>';
+            html += '</div>';
+            
+            // 最新信号
+            if (trader.lastSignal && Object.keys(trader.lastSignal).length > 0) {
+              html += '<div style="font-size: 0.8em; margin-top: 8px;">';
+              Object.entries(trader.lastSignal).forEach(([coin, signal]) => {
+                const actionColor = signal.action === 'LONG' ? 'var(--accent)' : signal.action === 'SHORT' ? 'var(--cyber-pink)' : 'var(--text-muted)';
+                html += '<div style="margin: 2px 0;">';
+                html += '<span style="color: var(--cyber-blue); font-weight: 600;">' + coin + '</span>: ';
+                html += '<span style="color: ' + actionColor + ';">' + signal.action + '</span>';
+                if (signal.reason) {
+                  html += ' <span style="color: var(--text-muted);">(' + signal.reason.substring(0, 30) + '...)</span>';
+                }
+                html += '</div>';
+              });
+              html += '</div>';
+            } else {
+              html += '<div style="font-size: 0.8em; color: var(--text-muted); margin-top: 8px;">暂无信号</div>';
+            }
+            
+            html += '</div>';
+          });
+          
+          html += '</div>';
+          
+          // 最近日志汇总
+          html += '<div style="margin-top: 15px; padding: 12px; background: var(--bg-card); border-radius: 8px;">';
+          html += '<div style="font-size: 0.8em; color: var(--text-muted); margin-bottom: 8px;">📝 最近动态</div>';
+          html += '<div style="font-size: 0.75em; font-family: monospace; max-height: 100px; overflow-y: auto;">';
+          
+          // 收集所有日志按时间排序
+          let allLogs = [];
+          data.traders.forEach(trader => {
+            if (trader.recentLogs) {
+              trader.recentLogs.forEach(log => {
+                allLogs.push({ trader: trader.name, log: log });
+              });
+            }
+          });
+          
+          // 显示最近5条
+          allLogs.slice(-5).forEach(item => {
+            const logParts = item.log.split(' - ');
+            if (logParts.length >= 3) {
+              const time = logParts[0].split(' ')[1] || '';
+              const msg = logParts[2] || '';
+              html += '<div style="margin: 2px 0; color: var(--text-secondary);">';
+              html += '<span style="color: var(--cyber-blue);">[' + time + ']</span> ';
+              html += '<span style="color: var(--accent);">' + item.trader + '</span>: ';
+              html += msg;
+              html += '</div>';
+            }
+          });
+          
+          html += '</div>';
+          html += '</div>';
+          
+          content.innerHTML = html;
+          document.getElementById('all-traders-update-time').textContent = '更新于 ' + new Date().toLocaleTimeString('zh-CN');
+          
+        } catch (err) {
+          console.error('Failed to update all traders status:', err);
+          document.getElementById('all-traders-content').innerHTML = '<div class="error">加载失败</div>';
+        }
+      }
+      
       // 立即更新一次，然后每 30 秒更新
       updatePosition();
       updateIndicators();
+      updateTraderStatus();
+      updateAllTradersStatus();
       setInterval(updatePosition, 30000);
       setInterval(updateIndicators, 30000);
+      setInterval(updateTraderStatus, 30000);
+      setInterval(updateAllTradersStatus, 30000);
     </script>
   `;
   

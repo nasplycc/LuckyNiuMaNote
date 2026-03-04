@@ -1,0 +1,64 @@
+{
+  "apps": [
+    {
+      "name": "trader-boll-macd",
+      "script": "/home/ubuntu/LuckyNiuMaNote/trading-scripts/run_trader_01.sh",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_01_boll_macd.log",
+      "error_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_01_boll_macd_error.log",
+      "out_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_01_boll_macd_out.log",
+      "autorestart": true,
+      "max_restarts": 5,
+      "restart_delay": 5000
+    },
+    {
+      "name": "trader-rsi-macd",
+      "script": "/home/ubuntu/LuckyNiuMaNote/trading-scripts/run_trader_02.sh",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_02_rsi_macd.log",
+      "error_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_02_rsi_macd_error.log",
+      "out_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_02_rsi_macd_out.log",
+      "autorestart": true,
+      "max_restarts": 5,
+      "restart_delay": 5000
+    },
+    {
+      "name": "trader-vwap",
+      "script": "/home/ubuntu/LuckyNiuMaNote/trading-scripts/run_trader_03.sh",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_03_vwap.log",
+      "error_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_03_vwap_error.log",
+      "out_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_03_vwap_out.log",
+      "autorestart": true,
+      "max_restarts": 5,
+      "restart_delay": 5000
+    },
+    {
+      "name": "trader-supertrend",
+      "script": "/home/ubuntu/LuckyNiuMaNote/trading-scripts/run_trader_04.sh",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_04_supertrend.log",
+      "error_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_04_supertrend_error.log",
+      "out_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_04_supertrend_out.log",
+      "autorestart": true,
+      "max_restarts": 5,
+      "restart_delay": 5000
+    },
+    {
+      "name": "trader-adx",
+      "script": "/home/ubuntu/LuckyNiuMaNote/trading-scripts/run_trader_05.sh",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_05_adx.log",
+      "error_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_05_adx_error.log",
+      "out_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_05_adx_out.log",
+      "autorestart": true,
+      "max_restarts": 5,
+      "restart_delay": 5000
+    },
+    {
+      "name": "trader-bb-mean-reversion",
+      "script": "/home/ubuntu/LuckyNiuMaNote/trading-scripts/run_trader_06.sh",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_06_bb_mean_reversion.log",
+      "error_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_06_bb_mean_reversion_error.log",
+      "out_file": "/home/ubuntu/LuckyNiuMaNote/logs/trader_06_bb_mean_reversion_out.log",
+      "autorestart": true,
+      "max_restarts": 5,
+      "restart_delay": 5000
+    }
+  ]
+}
