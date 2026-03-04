@@ -7,31 +7,42 @@ export function useSiteData() {
 
   useEffect(() => {
     let mounted = true;
-    fetch('/generated-data.json')
-      .then((res) => {
+    
+    // 尝试获取实时数据，如果不存在则回退到静态数据
+    const fetchData = async () => {
+      try {
+        // 首先尝试实时数据
+        let res = await fetch('/realtime-data.json?t=' + Date.now());
+        if (!res.ok) {
+          // 回退到静态数据
+          res = await fetch('/generated-data.json');
+        }
         if (!res.ok) {
           throw new Error(`HTTP ${res.status}`);
         }
-        return res.json();
-      })
-      .then((json) => {
+        const json = await res.json();
         if (mounted) {
           setData(json);
         }
-      })
-      .catch((err) => {
+      } catch (err) {
         if (mounted) {
           setError(err);
         }
-      })
-      .finally(() => {
+      } finally {
         if (mounted) {
           setLoading(false);
         }
-      });
+      }
+    };
+    
+    fetchData();
+    
+    // 每10秒刷新一次实时数据
+    const interval = setInterval(fetchData, 10000);
 
     return () => {
       mounted = false;
+      clearInterval(interval);
     };
   }, []);
 
