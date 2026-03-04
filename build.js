@@ -98,6 +98,22 @@ export const LEARN_ENTRIES = ${JSON.stringify(learnEntries, null, 2)};
 const outPath = path.join(__dirname, 'src', 'generated-data.js');
 fs.writeFileSync(outPath, output, 'utf-8');
 
+const jsonOutput = {
+  SITE_CONFIG: config.siteConfig,
+  STATS: config.stats,
+  VERIFICATION: config.verification,
+  STRATEGY: strategy,
+  ENTRIES: entries,
+  LEARN_ENTRIES: learnEntries
+};
+
+const frontendPublicDir = path.join(__dirname, 'frontend', 'public');
+if (fs.existsSync(frontendPublicDir)) {
+  const jsonOutPath = path.join(frontendPublicDir, 'generated-data.json');
+  fs.writeFileSync(jsonOutPath, JSON.stringify(jsonOutput, null, 2), 'utf-8');
+  console.log(`✅ Generated ${jsonOutPath}`);
+}
+
 console.log(`✅ Generated ${outPath}`);
 console.log(`   ${entries.length} entries, ${learnEntries.length} learn entries`);
 if (Object.keys(strategy).length > 0) {

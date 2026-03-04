@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "node build.js"
+    "build": "npm run build:content && npm run build:frontend",
+    "build:content": "node build.js",
+    "build:frontend": "npm --prefix frontend run build",
+    "dev:frontend": "npm --prefix frontend run dev"
   },
   "dependencies": {
     "express": "^5.2.1"
