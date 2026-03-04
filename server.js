@@ -39,9 +39,14 @@ function hlRequest(body) {
   });
 }
 
-// 静态文件服务
+// 静态文件服务 - React前端
 app.use('/public', express.static(path.join(__dirname, 'public')));
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(path.join(__dirname, 'frontend/dist')));
+
+// 所有路由返回React应用的index.html (SPA支持)
+app.get(['/', '/strategy', '/learn', '/chart', '/entry/:slug'], (req, res) => {
+  res.sendFile(path.join(__dirname, 'frontend/dist', 'index.html'));
+});
 
 // ==================== API 路由 ====================
 
@@ -106,11 +111,8 @@ app.get('/api/traders-status', (req, res) => {
     const traders = [
       { id: 'nfi',               name: 'NFI原版',        description: '多指标综合（EMA20/50/200 + RSI + BB + ATR），仅做空',                        logFile: 'trader_nfi.log',                 script: 'auto_trader_nostalgia_for_infinity.py' },
       { id: 'boll_macd',         name: 'BOLL+MACD V3',   description: 'MACD14(BTC)/BB15(ETH) 共振，1.5ATR止损/2.5ATR止盈 + 跟踪止损',             logFile: 'trader_01_boll_macd.log',         script: 'trader_01_boll_macd.py' },
-      { id: 'rsi_macd',          name: 'RSI+MACD双确认', description: 'RSI超买超卖 + MACD趋势确认，双重过滤降低假信号',                            logFile: 'trader_02_rsi_macd.log',          script: 'trader_02_rsi_macd.py' },
-      { id: 'vwap',              name: 'VWAP突破',        description: '价格突破成交量加权均价上方做多，跌破做空',                                    logFile: 'trader_03_vwap.log',              script: 'trader_03_vwap.py' },
-      { id: 'supertrend',        name: 'SuperTrend',      description: 'ATR + 移动均线，价格在SuperTrend线上方做多，下方做空',                        logFile: 'trader_04_supertrend.log',        script: 'trader_04_supertrend.py' },
-      { id: 'adx',               name: 'ADX趋势过滤',    description: 'ADX衡量趋势强度，趋势强时跟随，趋势弱时观望',                                 logFile: 'trader_05_adx.log',               script: 'trader_05_adx.py' },
-      { id: 'bb_mean_reversion', name: 'BB均值回归',      description: '触及布林带下轨做多，上轨做空（震荡市专用，趋势市风险高）',                   logFile: 'trader_06_bb_mean_reversion.log', script: 'trader_06_bb_mean_reversion.py' },
+      { id: 'supertrend',        name: 'SuperTrend×4.0', description: 'ATR×4.0优化版，过滤假信号，趋势跟随',                                        logFile: 'trader_04_supertrend.log',        script: 'trader_04_supertrend.py' },
+      { id: 'adx',               name: 'ADX趋势过滤',    description: 'ADX衡量趋势强度，BTC:EMA15/ETH:EMA30优化',                                    logFile: 'trader_05_adx.log',               script: 'trader_05_adx.py' },
     ];
 
     const { execSync } = require('child_process');
