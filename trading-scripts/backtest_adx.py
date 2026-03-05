@@ -107,28 +107,25 @@ def backtest_adx(candles: list, symbol: str) -> dict:
     
     capital = 1000
     leverage = 2
-    fee_rate = 0.00035
+    cooldown_bars = 4  # 4小时冷却 / 1h K线 = 4根
     
     pos = None
     trades = []
     equity = [(candles[0]["t"], capital)]
+    last_close_bar = -cooldown_bars
     
     for i in range(30, len(c)-1):
         price = c[i]
         
-        # ADX状态
         adx_strong = adx_vals[i] > PARAMS["adx_strong"]
         adx_weak = adx_vals[i] < PARAMS["adx_weak"]
         
-        # DI方向
         di_bullish = plus_di[i] > minus_di[i]
         di_bearish = minus_di[i] > plus_di[i]
         
-        # EMA趋势
         ema_bullish = ema_fast[i] > ema_slow[i]
         ema_bearish = ema_fast[i] < ema_slow[i]
         
-        # 检查平仓
         if pos:
             if pos["type"] == "LONG":
                 if price <= pos["sl"] or price >= pos["tp"] or (adx_weak and di_bearish):
@@ -137,6 +134,7 @@ def backtest_adx(candles: list, symbol: str) -> dict:
                     trades.append({"type": "LONG", "pnl": pnl * 0.3})
                     equity.append((candles[i]["t"], capital))
                     pos = None
+                    last_close_bar = i
             else:
                 if price >= pos["sl"] or price <= pos["tp"] or (adx_weak and di_bullish):
                     pnl = (pos["entry"] - price) / pos["entry"] * leverage
@@ -144,9 +142,10 @@ def backtest_adx(candles: list, symbol: str) -> dict:
                     trades.append({"type": "SHORT", "pnl": pnl * 0.3})
                     equity.append((candles[i]["t"], capital))
                     pos = None
+                    last_close_bar = i
         
-        # 开新仓 (只在趋势强时)
-        if not pos and adx_strong:
+        in_cooldown = (i - last_close_bar) < cooldown_bars
+        if not pos and adx_strong and not in_cooldown:
             atr_val = atr_vals[i] if atr_vals[i] > 0 else price * 0.01
             
             if di_bullish and ema_bullish:

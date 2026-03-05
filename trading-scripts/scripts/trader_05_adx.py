@@ -49,7 +49,7 @@ CONFIG = {
     "max_position_usd": 294,
     "min_order_value": 10,
     "check_interval": 60,
-    "trade_cooldown": 14400,
+    "trade_cooldown": 14400,  # 默认值，实际按 COIN_PARAMS 中的 cooldown 覆盖
     "trade_side": "both",
     "trade_side_by_symbol": {"BTC": "short_only", "ETH": "both"},
     "maker_fee": 0.0001,
@@ -57,18 +57,15 @@ CONFIG = {
     "min_profit_after_fee": 0.005,
 }
 
-# ADX 参数 (优化版)
+# ADX 参数 (回测优化: 3月+6月跨时段验证，按币种独立优化)
 STRATEGY_PARAMS = {
-    "adx_period": 14,
-    "adx_strong_trend": 25,  # ADX > 25 趋势强
-    "adx_weak_trend": 20,    # ADX < 20 趋势弱
-    "di_period": 14,         # DI+ DI- 周期
+    "adx_strong_trend": 25,
+    "adx_weak_trend": 20,
 }
 
-# 按币种优化的EMA周期
-EMA_PERIODS = {
-    "BTC": 15,   # 优化：BTC用EMA15 (回测收益+17.39%)
-    "ETH": 30,   # 优化：ETH用EMA30 (回测收益+20.12%)
+COIN_PARAMS = {
+    "BTC": {"ema_fast": 8, "ema_slow": 50, "cooldown": 3600},    # 1h冷却: 3月+16.82% 6月+37.51% 评分28.08
+    "ETH": {"ema_fast": 25, "ema_slow": 30, "cooldown": 14400},  # 4h冷却: 3月+34.41% 6月+44.46% 评分41.81
 }
 
 logging.basicConfig(
@@ -179,14 +176,15 @@ def ema(values: List[float], period: int) -> List[float]:
 
 
 def analyze_adx_trend(symbol: str, highs: List[float], lows: List[float], closes: List[float]) -> Dict:
-    """ADX趋势强度过滤分析 (优化版)"""
+    """ADX趋势强度过滤分析 (按币种独立双EMA + ADX过滤)"""
     p = STRATEGY_PARAMS
-    ema_period = EMA_PERIODS.get(symbol, 20)  # 按币种优化EMA周期
+    cp = COIN_PARAMS.get(symbol, {"ema_fast": 25, "ema_slow": 30})
+    adx_period = 10
     
-    adx, plus_di, minus_di = calculate_adx(highs, lows, closes, p["adx_period"])
+    adx, plus_di, minus_di = calculate_adx(highs, lows, closes, adx_period)
     
-    # 计算EMA用于趋势方向确认 (BTC:15, ETH:30)
-    ema_vals = ema(closes, ema_period)
+    ema_fast_vals = ema(closes, cp["ema_fast"])
+    ema_slow_vals = ema(closes, cp["ema_slow"])
     
     if len(closes) < 30:
         return {"action": "HOLD", "reason": "insufficient_data"}
@@ -196,20 +194,15 @@ def analyze_adx_trend(symbol: str, highs: List[float], lows: List[float], closes
     current_plus_di = plus_di[-1]
     current_minus_di = minus_di[-1]
     
-    # ADX 趋势强度判断
     strong_trend = current_adx > p["adx_strong_trend"]
     weak_trend = current_adx < p["adx_weak_trend"]
     
-    # DI 方向判断
-    di_bullish = current_plus_di > current_minus_di  # +DI > -DI，多头
-    di_bearish = current_minus_di > current_plus_di  # -DI > +DI，空头
+    di_bullish = current_plus_di > current_minus_di
+    di_bearish = current_minus_di > current_plus_di
     
-    # EMA趋势确认 (按币种优化)
-    ema_bullish = price > ema_vals[-1]
-    ema_bearish = price < ema_vals[-1]
+    ema_bullish = ema_fast_vals[-1] > ema_slow_vals[-1]
+    ema_bearish = ema_fast_vals[-1] < ema_slow_vals[-1]
     
-    # 信号生成
-    # 强趋势：跟随趋势
     long_signal = strong_trend and di_bullish and ema_bullish
     short_signal = strong_trend and di_bearish and ema_bearish
     
@@ -217,7 +210,7 @@ def analyze_adx_trend(symbol: str, highs: List[float], lows: List[float], closes
         "action": "LONG" if long_signal else "SHORT" if short_signal else "HOLD",
         "reason": f"ADX({current_adx:.1f},{'strong' if strong_trend else 'weak' if weak_trend else 'medium'}),"
                   f"+DI({current_plus_di:.1f}),-DI({current_minus_di:.1f}),"
-                  f"EMA{ema_period}({'bull' if ema_bullish else 'bear'})",
+                  f"EMA{cp['ema_fast']}/{cp['ema_slow']}({'bull' if ema_bullish else 'bear'})",
         "price": price,
         "adx": current_adx,
         "plus_di": current_plus_di,
@@ -280,7 +273,8 @@ class AdxTrader:
     def can_trade(self, symbol: str) -> bool:
         """检查交易冷却"""
         last_time = self.last_trade_time.get(symbol, 0)
-        return time.time() - last_time > CONFIG["trade_cooldown"]
+        cooldown = COIN_PARAMS.get(symbol, {}).get("cooldown", CONFIG["trade_cooldown"])
+        return time.time() - last_time > cooldown
     
     def execute_trade(self, symbol: str, signal: Dict):
         """执行交易"""
@@ -294,10 +288,9 @@ class AdxTrader:
             logger.info(f"{symbol} 空头信号被过滤 (仅做多)")
             return
         
-        # 实盘交易 - 使用固定仓位$30，不查询余额
         if self.exchange:
             try:
-                # 固定仓位$30
+                self.exchange.update_leverage(CONFIG["default_leverage"], symbol, is_cross=True)
                 position_value = 30.0
                 current_price = signal["price"]
                 # 计算数量并舍入到正确精度（BTC 5位，ETH 4位）
