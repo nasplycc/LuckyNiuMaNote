@@ -18,7 +18,7 @@ description: 启动并调试本工程的 Node 后端与 React 前端。使用同
 
 1. 进入仓库根目录。
 2. 检查根目录与 `frontend` 目录依赖，缺失则先安装。
-3. 检查并清理端口 `3000`、`5173` 的占用进程。
+3. **必须**清理端口 `3000`、`5173` 的占用进程，直至端口完全释放方可启动。
 4. 在同一个终端启动后端与前端，并为日志加前缀区分来源。
 5. 确认前端可访问后，使用 Cursor 内置浏览器打开 `http://localhost:5173`。
 
@@ -42,15 +42,20 @@ fi
 
 ## 端口清理命令
 
+端口被占用时**必须**清理，循环直到端口完全释放：
+
 ```bash
 for PORT in 3000 5173; do
-  PIDS=$(lsof -ti tcp:$PORT || true)
-  if [ -n "$PIDS" ]; then
+  while true; do
+    PIDS=$(lsof -ti tcp:$PORT 2>/dev/null || true)
+    if [ -z "$PIDS" ]; then
+      echo "[port-clean] tcp:$PORT free"
+      break
+    fi
     echo "[port-clean] kill tcp:$PORT -> $PIDS"
-    kill -9 $PIDS
-  else
-    echo "[port-clean] tcp:$PORT free"
-  fi
+    kill -9 $PIDS 2>/dev/null || true
+    sleep 1
+  done
 done
 ```
 
@@ -94,4 +99,4 @@ wait
 - 首次启动或依赖缺失时，终端输出 `[deps]` 安装日志并成功完成。
 - 同一终端持续看到 `[backend]` 与 `[frontend]` 日志。
 - 前端地址 `http://localhost:5173` 可在 Cursor 内置浏览器正常打开。
-- 若端口被占用，启动前已输出对应清理日志。
+- 若端口被占用，启动前必须清理并输出 `[port-clean]` 日志，直至端口释放。

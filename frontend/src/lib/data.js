@@ -11,16 +11,21 @@ export function useSiteData() {
     // 尝试获取实时数据，如果不存在则回退到静态数据
     const fetchData = async () => {
       try {
-        // 首先尝试实时数据
-        let res = await fetch('/realtime-data.json?t=' + Date.now());
-        if (!res.ok) {
-          // 回退到静态数据
-          res = await fetch('/generated-data.json');
+        let json = null;
+        const res1 = await fetch('/realtime-data.json?t=' + Date.now());
+        if (res1.ok) {
+          const ct = res1.headers.get('content-type') || '';
+          if (ct.includes('application/json')) {
+            try {
+              json = await res1.json();
+            } catch (_) {}
+          }
         }
-        if (!res.ok) {
-          throw new Error(`HTTP ${res.status}`);
+        if (!json) {
+          const res2 = await fetch('/generated-data.json');
+          if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
+          json = await res2.json();
         }
-        const json = await res.json();
         if (mounted) {
           setData(json);
         }
