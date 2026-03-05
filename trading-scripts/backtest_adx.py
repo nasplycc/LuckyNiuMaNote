@@ -82,14 +82,14 @@ def adx_calc(highs: list, lows: list, closes: list, p: int = 14):
     
     return adx, plus_di, minus_di
 
-# ADX参数
+# ADX参数 (回测优化: 3月+6月交叉验证最优)
 PARAMS = {
-    "adx_period": 14,
-    "adx_strong": 25,    # ADX>25趋势强
-    "adx_weak": 20,      # ADX<20趋势弱
-    "ema_fast": 20,
-    "ema_slow": 50,
-    "stop_loss_atr": 2.0,
+    "adx_period": 10,
+    "adx_strong": 25,
+    "adx_weak": 20,
+    "ema_fast": 25,
+    "ema_slow": 30,
+    "stop_loss_atr": 2.5,
     "take_profit_atr": 3.0,
 }
 
