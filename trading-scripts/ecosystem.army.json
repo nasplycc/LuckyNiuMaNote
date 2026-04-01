@@ -1,0 +1,64 @@
+{
+  "apps": [
+    {
+      "name": "auto-trader",
+      "cwd": "/home/ubuntu/LuckyNiuMaNote/trading-scripts",
+      "script": "run_auto_trader.sh",
+      "interpreter": "bash",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/pm2_auto_trader_combined.log",
+      "merge_logs": true,
+      "autorestart": true,
+      "max_restarts": 50,
+      "restart_delay": 8000,
+      "min_uptime": "10s"
+    },
+    {
+      "name": "trader-boll-macd",
+      "cwd": "/home/ubuntu/LuckyNiuMaNote/trading-scripts",
+      "script": "run_trader_01.sh",
+      "interpreter": "bash",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/pm2_boll_macd_combined.log",
+      "merge_logs": true,
+      "autorestart": true,
+      "max_restarts": 50,
+      "restart_delay": 8000,
+      "min_uptime": "10s"
+    },
+    {
+      "name": "trader-supertrend",
+      "cwd": "/home/ubuntu/LuckyNiuMaNote/trading-scripts",
+      "script": "run_trader_04.sh",
+      "interpreter": "bash",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/pm2_supertrend_combined.log",
+      "merge_logs": true,
+      "autorestart": true,
+      "max_restarts": 50,
+      "restart_delay": 8000,
+      "min_uptime": "10s"
+    },
+    {
+      "name": "trader-adx",
+      "cwd": "/home/ubuntu/LuckyNiuMaNote/trading-scripts",
+      "script": "run_trader_05.sh",
+      "interpreter": "bash",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/pm2_adx_combined.log",
+      "merge_logs": true,
+      "autorestart": true,
+      "max_restarts": 50,
+      "restart_delay": 8000,
+      "min_uptime": "10s"
+    },
+    {
+      "name": "realtime-data",
+      "cwd": "/home/ubuntu/LuckyNiuMaNote/trading-scripts",
+      "script": "realtime_data_cron.sh",
+      "interpreter": "bash",
+      "log_file": "/home/ubuntu/LuckyNiuMaNote/logs/pm2_realtime_data_combined.log",
+      "merge_logs": true,
+      "autorestart": true,
+      "max_restarts": 50,
+      "restart_delay": 5000,
+      "min_uptime": "5s"
+    }
+  ]
+}

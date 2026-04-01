@@ -224,12 +224,20 @@ def load_hl_config() -> None:
 class NostalgiaForInfinityTrader:
     def __init__(self) -> None:
         self.info = Info(constants.MAINNET_API_URL, skip_ws=True)
-        self.account = Account.from_key(CONFIG["api_private_key"])
-        self.exchange = Exchange(
-            self.account,
-            constants.MAINNET_API_URL,
-            account_address=CONFIG["main_wallet"],
-        )
+        self.account = None
+        self.exchange = None
+        key = (CONFIG.get("api_private_key") or "").strip()
+        if key:
+            self.account = Account.from_key(key)
+            self.exchange = Exchange(
+                self.account,
+                constants.MAINNET_API_URL,
+                account_address=CONFIG["main_wallet"],
+            )
+        else:
+            logger.warning(
+                "API_PRIVATE_KEY 未配置：仅拉取行情与信号日志，不会向 Hyperliquid 下单"
+            )
         self.last_loss_time = None
         self.peak_balance = 0.0
 
@@ -550,6 +558,8 @@ class NostalgiaForInfinityTrader:
             return []
 
     def cancel_all_orders(self, symbol: str) -> None:
+        if not self.exchange:
+            return
         try:
             for order in self.get_open_orders():
                 if order.get("coin") == symbol:
@@ -566,6 +576,9 @@ class NostalgiaForInfinityTrader:
         return False
 
     def place_order(self, symbol: str, is_buy: bool, size: float, price: float, reduce_only: bool = False) -> Dict:
+        if not self.exchange:
+            logger.info("monitor-only mode, skip order %s", symbol)
+            return {"status": "skipped", "message": "no signing key"}
         try:
             result = self.exchange.order(
                 symbol,
@@ -700,20 +713,15 @@ class NostalgiaForInfinityTrader:
             time.sleep(CONFIG["check_interval"])
 
 
-def validate_runtime_config() -> Tuple[bool, str]:
-    if not CONFIG["main_wallet"]:
-        return False, "MAIN_WALLET missing in trading-scripts/config/.hl_config"
-    if not CONFIG["api_private_key"]:
-        return False, "API_PRIVATE_KEY missing in trading-scripts/config/.hl_config or HL_API_KEY"
-    return True, "ok"
-
-
 def main() -> None:
     load_hl_config()
-    ok, reason = validate_runtime_config()
-    if not ok:
-        logger.error(reason)
+    if not CONFIG["main_wallet"]:
+        logger.error("MAIN_WALLET missing in trading-scripts/config/.hl_config")
         raise SystemExit(1)
+    if not CONFIG["api_private_key"]:
+        logger.warning(
+            "API_PRIVATE_KEY 缺失：将启动 NFI 进程但仅记录信号；补齐密钥后重启 auto-trader 即可恢复实盘"
+        )
 
     trader = NostalgiaForInfinityTrader()
     trader.run()

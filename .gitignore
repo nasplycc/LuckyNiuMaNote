@@ -5,4 +5,5 @@ src/generated-data.js
 logs/
 *.log
 .trading-scripts/.hl_config
+trading-scripts/config/.hl_config
 

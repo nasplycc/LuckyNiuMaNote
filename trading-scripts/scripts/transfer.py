@@ -12,7 +12,7 @@ from eth_account import Account
 
 def load_config():
     """Load config from .hl_config file"""
-    config_path = Path(__file__).parent.parent / ".hl_config"
+    config_path = Path(__file__).parent.parent / "config" / ".hl_config"
     if not config_path.exists():
         raise FileNotFoundError(f"Config file not found: {config_path}")
     config = {}

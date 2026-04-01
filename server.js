@@ -2,13 +2,46 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const https = require('https');
+const { spawnSync } = require('child_process');
 
 const app = express();
-const PORT = 3000;
+const PORT = parseInt(process.env.PORT || '3000', 10);
+const LISTEN_HOST = process.env.LISTEN_HOST || '0.0.0.0';
+
+if (process.env.TRUST_PROXY === '1') {
+  app.set('trust proxy', 1);
+}
 
 // 主钱包地址
 const WALLET_ADDRESS = '0xfFd91a584cf6419b92E58245898D2A9281c628eb';
 const HL_API = 'https://api.hyperliquid.xyz/info';
+
+/** 检测策略脚本是否由 Python 进程加载（pgrep 用脚本文件名匹配相对路径 argv，禁止仅用绝对路径） */
+function isTraderProcessRunning(scriptFile) {
+  const r = spawnSync('pgrep', ['-f', scriptFile], { encoding: 'utf8' });
+  if (r.status !== 0) return false;
+  const pids = r.stdout.trim().split('\n').filter(Boolean);
+  for (const pid of pids) {
+    try {
+      const cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ');
+      if (/\bpython3?\b/i.test(cmd) && cmd.includes(scriptFile)) return true;
+    } catch (_) { /* 非 Linux 或进程已退出 */ }
+  }
+  return false;
+}
+
+function firstTraderPidForScript(scriptFile) {
+  const r = spawnSync('pgrep', ['-f', scriptFile], { encoding: 'utf8' });
+  if (r.status !== 0) return null;
+  const pids = r.stdout.trim().split('\n').filter(Boolean);
+  for (const pid of pids) {
+    try {
+      const cmd = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').replace(/\0/g, ' ');
+      if (/\bpython3?\b/i.test(cmd) && cmd.includes(scriptFile)) return pid;
+    } catch (_) {}
+  }
+  return null;
+}
 
 // 调用 Hyperliquid API
 function hlRequest(body) {
@@ -80,8 +113,13 @@ app.get('/api/trader-status', (req, res) => {
       }
     }
     
-    // 计算运行时间
-    const traderProcess = require('child_process').execSync('ps -o etime= -p $(pgrep -f "auto_trader_nostalgia_for_infinity.py") 2>/dev/null || echo "unknown"', { encoding: 'utf-8' }).trim();
+    const nfiPid = firstTraderPidForScript('auto_trader_nostalgia_for_infinity.py');
+    if (nfiPid && status !== 'running') status = 'running';
+    let traderProcess = 'unknown';
+    if (nfiPid) {
+      const et = spawnSync('ps', ['-o', 'etime=', '-p', nfiPid], { encoding: 'utf8' });
+      traderProcess = (et.stdout || '').trim() || 'unknown';
+    }
     
     res.json({
       success: true,
@@ -115,20 +153,13 @@ app.get('/api/traders-status', (req, res) => {
       { id: 'adx',               name: 'ADX趋势过滤',    description: 'ADX衡量趋势强度，BTC:EMA15/ETH:EMA30优化',                                    logFile: 'trader_05_adx.log',               script: 'trader_05_adx.py' },
     ];
 
-    const { execSync } = require('child_process');
     const results = traders.map(trader => {
       const logPath = path.join(__dirname, 'logs', trader.logFile);
-      let status = 'offline';
       let lastSignal = {};
       let lastLines = [];
       let lastActive = null;
 
-      try {
-        execSync(`pgrep -f "${trader.script}"`, { stdio: 'ignore' });
-        status = 'running';
-      } catch (e) {
-        status = 'offline';
-      }
+      const status = isTraderProcessRunning(trader.script) ? 'running' : 'offline';
 
       if (fs.existsSync(logPath)) {
         lastActive = fs.statSync(logPath).mtime.getTime();
@@ -656,9 +687,10 @@ if (fs.existsSync(frontendDistPath)) {
   });
 }
 
-app.listen(PORT, '0.0.0.0', () => {
+app.listen(PORT, LISTEN_HOST, () => {
+  const publicUrl = process.env.SITE_PUBLIC_URL;
   console.log(`\n🐴 小牛马炒币网站启动成功！\n`);
-  console.log(`本地访问: http://localhost:${PORT}`);
-  console.log(`公网访问: http://15.152.86.199:${PORT}`);
+  console.log(`监听: http://${LISTEN_HOST}:${PORT}`);
+  if (publicUrl) console.log(`站点: ${publicUrl}`);
   console.log(`\n按 Ctrl+C 停止服务器\n`);
 });

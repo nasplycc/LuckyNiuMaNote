@@ -26,7 +26,7 @@ LOG_DIR.mkdir(parents=True, exist_ok=True)
 
 # 读取配置文件
 def load_config():
-    config_path = Path(__file__).resolve().parents[2] / "config" / ".hl_config"
+    config_path = Path(__file__).resolve().parents[1] / "config" / ".hl_config"
     cfg = {}
     if config_path.exists():
         with open(config_path, 'r') as f:
