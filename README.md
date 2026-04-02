@@ -29,16 +29,22 @@ LuckyNiuMaNote/
     │   ├── transfer.py                             # 现货/合约资金划转
     │   ├── market_check.py                         # 价格监控与告警
     │   ├── trailing_stop.py                        # 移动止损管理
+    │   ├── state_store.py                          # SQLite 状态层
+    │   ├── notifier.py                             # Telegram 告警
+    │   ├── risk_guard.py                           # SAFE_MODE 与失败计数
+    │   ├── reconcile.py                            # 启动对账与保护单检查
     │   ├── trader_01_boll_macd.py                  # 布林带 + MACD 策略
     │   ├── trader_02_rsi_macd.py                   # RSI + MACD 策略
     │   ├── trader_03_vwap.py                       # VWAP 策略
     │   ├── trader_04_supertrend.py                 # SuperTrend 策略
     │   ├── trader_05_adx.py                        # ADX 策略
     │   └── trader_06_bb_mean_reversion.py          # 布林带均值回归
+    ├── state/                                      # SQLite 运行状态目录
     ├── backtest_*.py                               # 各策略回测脚本
     ├── ecosystem.config.json                       # PM2 进程管理配置
     └── config/
-        └── .hl_config.sample                       # 钱包配置模板
+        ├── .hl_config.sample                       # 钱包配置模板
+        └── .runtime_config.sample.json             # 运行时风险/告警模板
 ```
 
 ## 当前策略：NFI Short-Only 反转策略 v2.0
@@ -78,6 +84,20 @@ LuckyNiuMaNote/
 
 **回测结果**（至 2026-02-24）：BTC +25.84%，ETH +46.47%
 
+## 新增的运行时安全能力（本地增强版）
+
+当前本地版本额外加入了以下能力：
+
+- **SQLite 状态层**：记录信号、订单、持仓、系统事件
+- **SAFE_MODE**：连续失败、API 超时、保护单缺失、成交确认失败时自动进入保护模式
+- **Telegram 告警**：关键事件主动推送
+- **启动对账**：启动时校验交易所持仓、本地状态、挂单保护是否一致
+- **保护单自动修复**：发现仓位存在但保护单缺失时，尝试自动补挂 SL / TP
+- **成交确认轮询**：开仓后先确认真实持仓，再继续挂保护单
+- **仓位关闭清理**：检测到交易所无仓位时，自动把本地仓位标记为 CLOSED
+
+> 注意：这些增强目前只在你本地分支里，尚未合并回原仓库默认版本。
+
 ## 数据链路
 
 ```
@@ -89,6 +109,7 @@ src/generated-data.js
         ↑
 Hyperliquid API（账户 / 持仓 / K 线）
 logs/*.log（交易机器人运行状态）
+state/trader_state.db（本地 SQLite 状态）
 ```
 
 **Web 实时 API**（由 `server.js` 提供）：
@@ -122,7 +143,57 @@ pip install -r requirements.txt
 cp config/.hl_config.sample config/.hl_config
 chmod 600 config/.hl_config
 # 编辑 .hl_config，填入 MAIN_WALLET / API_WALLET / API_PRIVATE_KEY
+
+# 配置运行时告警与风控（可选，但强烈建议）
+cp config/.runtime_config.sample.json config/.runtime_config.json
+# 编辑 .runtime_config.json，填入 Telegram bot/chat_id 与风险参数
 ```
+
+### 最小验证流程（建议先做）
+
+#### 1）只读 / monitor-only 验证
+不填写 `API_PRIVATE_KEY`，只保留 `MAIN_WALLET`，启动后确认：
+
+- 程序能正常启动
+- 能拉到行情与账户状态
+- 能记录信号到 `state/trader_state.db`
+- 不会真实下单
+
+```bash
+cd trading-scripts
+source .venv/bin/activate
+python scripts/auto_trader_nostalgia_for_infinity.py
+```
+
+#### 2）Telegram 告警验证
+在 `config/.runtime_config.json` 配好：
+
+```json
+{
+  "telegram": {
+    "bot_token": "123:abc",
+    "chat_id": "123456"
+  },
+  "risk": {
+    "max_consecutive_failures": 3,
+    "max_api_timeouts": 5,
+    "safe_mode_on_protection_failure": true,
+    "entry_fill_timeout_sec": 20,
+    "entry_fill_poll_interval_sec": 2
+  }
+}
+```
+
+然后启动脚本，确认能收到启动消息。
+
+#### 3）小额 live 验证
+只有在上面都通过后，再补 `API_PRIVATE_KEY`，并先用极小仓位验证：
+
+- 下单后能确认真实持仓
+- 能自动挂止损单
+- 能自动挂止盈单
+- SQLite 里有 `ENTRY / SL / TP` 记录
+- 若保护单失败，会进入 `SAFE_MODE`
 
 ### 机器人管理（PM2）
 
@@ -159,8 +230,10 @@ python trading-scripts/scripts/hl_trade.py orders
 ## 安全提示
 
 - `.hl_config` 已加入 `.gitignore`，**永远不要提交到 git**
+- `.runtime_config.json` 也不要提交，里面可能包含 Telegram 凭据
 - API 私钥权限设为 `600`，不要分享给任何人
-- 建议先用小额验证脚本正确性
+- 建议先用 monitor-only 模式验证，再做小额 live
+- 真正 live 之前，先手动检查一次 Hyperliquid API wallet 权限、转账和 reduce-only 保护单行为
 
 ## 技术栈
 
@@ -172,6 +245,7 @@ python trading-scripts/scripts/hl_trade.py orders
 | 交易脚本 | Python 3.12 + hyperliquid-python-sdk |
 | 进程管理 | PM2 |
 | 钱包 | eth-account（以太坊兼容） |
+| 本地状态层 | SQLite |
 
 ## 参考
 

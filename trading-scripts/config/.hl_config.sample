@@ -20,3 +20,14 @@ API_WALLET=0x_YOUR_API_WALLET_ADDRESS
 # Shown once when you create the API wallet - save it securely!
 # Format: 0x followed by 64 hex characters
 API_PRIVATE_KEY=0x_YOUR_API_PRIVATE_KEY
+
+
+# Optional runtime alert config can also be placed in config/.runtime_config.json
+# Example:
+# {
+#   "telegram": {"bot_token": "123:abc", "chat_id": "123456"},
+#   "risk": {"max_consecutive_failures": 3, "max_api_timeouts": 5}
+# }
+# Or via environment variables:
+#   export TG_BOT_TOKEN=...
+#   export TG_CHAT_ID=...

@@ -13,9 +13,10 @@ import json
 import logging
 import os
 import time
+import uuid
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Dict, List, Tuple
+from typing import Dict, List, Tuple, Optional
 
 import requests
 from eth_account import Account
@@ -23,10 +24,16 @@ from hyperliquid.exchange import Exchange
 from hyperliquid.info import Info
 from hyperliquid.utils import constants
 
+from notifier import TelegramNotifier
+from reconcile import reconcile_exchange_state
+from risk_guard import RiskGuard
+from state_store import StateStore
+
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = PROJECT_ROOT.parent
 LOG_DIR = WORKSPACE_ROOT / "logs"
 LOG_DIR.mkdir(parents=True, exist_ok=True)
+RUNTIME_CONFIG_PATH = PROJECT_ROOT / "config" / ".runtime_config.json"
 
 CONFIG = {
     "main_wallet": "",
@@ -39,15 +46,19 @@ CONFIG = {
     "max_position_usd": 294,
     "min_order_value": 10,
     "check_interval": 60,
-    "trade_cooldown": 14400,  # 4h，对齐收益最优组合的冷却设置
-    "trade_side": "both",  # both / long_only / short_only（全局默认）
-    "trade_side_by_symbol": {"BTC": "short_only", "ETH": "both"},  # 按币种覆盖
+    "trade_cooldown": 14400,
+    "trade_side": "both",
+    "trade_side_by_symbol": {"BTC": "short_only", "ETH": "both"},
     "maker_fee": 0.0001,
     "taker_fee": 0.00035,
     "min_profit_after_fee": 0.005,
+    "max_consecutive_failures": 3,
+    "max_api_timeouts": 5,
+    "safe_mode_on_protection_failure": True,
+    "entry_fill_timeout_sec": 20,
+    "entry_fill_poll_interval_sec": 2,
 }
 
-# NFI-style parameters (default + optional per-symbol overrides)
 NFI_DEFAULTS = {
     "ema_fast": 20,
     "ema_trend": 50,
@@ -196,6 +207,28 @@ def atr_wilder(highs: List[float], lows: List[float], closes: List[float], perio
     return out
 
 
+def load_runtime_config() -> None:
+    if not RUNTIME_CONFIG_PATH.exists():
+        return
+    try:
+        data = json.loads(RUNTIME_CONFIG_PATH.read_text())
+    except Exception as exc:
+        logger.warning("failed to load runtime config: %s", exc)
+        return
+
+    risk_cfg = data.get("risk", {})
+    if "max_consecutive_failures" in risk_cfg:
+        CONFIG["max_consecutive_failures"] = int(risk_cfg["max_consecutive_failures"])
+    if "max_api_timeouts" in risk_cfg:
+        CONFIG["max_api_timeouts"] = int(risk_cfg["max_api_timeouts"])
+    if "safe_mode_on_protection_failure" in risk_cfg:
+        CONFIG["safe_mode_on_protection_failure"] = bool(risk_cfg["safe_mode_on_protection_failure"])
+    if "entry_fill_timeout_sec" in risk_cfg:
+        CONFIG["entry_fill_timeout_sec"] = int(risk_cfg["entry_fill_timeout_sec"])
+    if "entry_fill_poll_interval_sec" in risk_cfg:
+        CONFIG["entry_fill_poll_interval_sec"] = int(risk_cfg["entry_fill_poll_interval_sec"])
+
+
 def load_hl_config() -> None:
     config_path = PROJECT_ROOT / "config" / ".hl_config"
     if not config_path.exists():
@@ -226,6 +259,9 @@ class NostalgiaForInfinityTrader:
         self.info = Info(constants.MAINNET_API_URL, skip_ws=True)
         self.account = None
         self.exchange = None
+        self.store = StateStore()
+        self.notifier = TelegramNotifier()
+        self.guard = RiskGuard(self.store)
         key = (CONFIG.get("api_private_key") or "").strip()
         if key:
             self.account = Account.from_key(key)
@@ -235,11 +271,258 @@ class NostalgiaForInfinityTrader:
                 account_address=CONFIG["main_wallet"],
             )
         else:
-            logger.warning(
-                "API_PRIVATE_KEY 未配置：仅拉取行情与信号日志，不会向 Hyperliquid 下单"
-            )
+            logger.warning("API_PRIVATE_KEY 未配置：仅拉取行情与信号日志，不会向 Hyperliquid 下单")
         self.last_loss_time = None
         self.peak_balance = 0.0
+
+    def notify(self, message: str) -> None:
+        try:
+            self.notifier.send(message)
+        except Exception:
+            pass
+
+    def _extract_order_id(self, result: Dict) -> Optional[str]:
+        if not isinstance(result, dict):
+            return None
+        for key in ("response", "data"):
+            payload = result.get(key)
+            if isinstance(payload, dict):
+                statuses = payload.get("data", {}).get("statuses") if isinstance(payload.get("data"), dict) else payload.get("statuses")
+                if isinstance(statuses, list):
+                    for item in statuses:
+                        if isinstance(item, dict):
+                            resting = item.get("resting") or {}
+                            filled = item.get("filled") or {}
+                            oid = resting.get("oid") or filled.get("oid")
+                            if oid is not None:
+                                return str(oid)
+        oid = result.get("oid")
+        return str(oid) if oid is not None else None
+
+    def get_position_detail(self, symbol: str) -> Optional[Dict]:
+        account = self.get_account_state()
+        for pos in account.get("positions", []):
+            p = pos.get("position", {})
+            if p.get("coin") == symbol and float(p.get("szi", 0) or 0) != 0:
+                return p
+        return None
+
+    def get_local_position_meta(self, symbol: str) -> Dict:
+        row = self.store.get_open_position(symbol)
+        if not row:
+            return {}
+        try:
+            return json.loads(row.get("meta_json") or "{}")
+        except Exception:
+            return {}
+
+    def wait_for_entry_fill(self, symbol: str, expected_side: str, expected_size: float) -> Optional[Dict]:
+        deadline = time.time() + int(CONFIG.get("entry_fill_timeout_sec", 20))
+        poll_interval = max(1, int(CONFIG.get("entry_fill_poll_interval_sec", 2)))
+        while time.time() < deadline:
+            pos = self.get_position_detail(symbol)
+            if pos:
+                live_size = float(pos.get("szi", 0) or 0)
+                if expected_side == "BUY" and live_size > 0:
+                    return pos
+                if expected_side == "SELL" and live_size < 0:
+                    return pos
+            time.sleep(poll_interval)
+        self.guard.enter_safe_mode(
+            f"{symbol} entry fill confirmation timed out",
+            {"symbol": symbol, "expected_side": expected_side, "expected_size": expected_size},
+        )
+        self.notify(f"🛑 {symbol} 开仓后未在规定时间内确认成交，系统进入 SAFE_MODE")
+        return None
+
+    def place_trigger_order(self, symbol: str, is_buy: bool, size: float, trigger_price: float, kind: str) -> Dict:
+        if not self.exchange:
+            return {"status": "skipped", "message": "no signing key"}
+        try:
+            result = self.exchange.order(
+                symbol,
+                is_buy,
+                size,
+                trigger_price,
+                {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": kind}},
+                reduce_only=True,
+            )
+            logger.info("trigger order result: %s", result)
+            self.guard.record_success()
+            return result
+        except requests.Timeout as exc:
+            logger.error("failed to place trigger order: %s", exc)
+            self.guard.record_api_timeout({"op": "place_trigger_order", "symbol": symbol, "error": str(exc)}, threshold=int(CONFIG.get("max_api_timeouts", 5)))
+            return {"status": "error", "message": str(exc)}
+        except Exception as exc:
+            logger.error("failed to place trigger order: %s", exc)
+            self.guard.record_failure("place_trigger_order failed", {"symbol": symbol, "error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
+            return {"status": "error", "message": str(exc)}
+
+    def ensure_protection_orders(self, symbol: str, signal: Dict, confirmed_pos: Optional[Dict] = None) -> bool:
+        pos = confirmed_pos or self.get_position_detail(symbol)
+        if not pos:
+            self.guard.enter_safe_mode(f"{symbol} entry submitted but no live position found for protection setup", {"symbol": symbol})
+            self.store.upsert_position(symbol, None, None, None, signal.get("stop_loss"), signal.get("take_profit"), "UNPROTECTED")
+            self.notify(f"🛑 {symbol} 下单后未检测到持仓，已进入 SAFE_MODE")
+            return False
+
+        size = abs(float(pos.get("szi", 0) or 0))
+        if size <= 0:
+            self.guard.enter_safe_mode(f"{symbol} invalid position size for protection setup", {"symbol": symbol, "position": pos})
+            self.notify(f"🛑 {symbol} 持仓数量异常，已进入 SAFE_MODE")
+            return False
+
+        is_long = float(pos.get("szi", 0) or 0) > 0
+        close_side = not is_long
+
+        stop_result = self.place_trigger_order(symbol, close_side, size, float(signal["stop_loss"]), "sl")
+        stop_oid = self._extract_order_id(stop_result)
+        stop_ok = stop_result.get("status") == "ok" or stop_oid is not None
+        self.store.record_order(symbol, "SL", "BUY" if close_side else "SELL", stop_oid, None, float(signal["stop_loss"]), size, "submitted" if stop_ok else "error", stop_result)
+
+        tp_result = self.place_trigger_order(symbol, close_side, size, float(signal["take_profit"]), "tp")
+        tp_oid = self._extract_order_id(tp_result)
+        tp_ok = tp_result.get("status") == "ok" or tp_oid is not None
+        self.store.record_order(symbol, "TP", "BUY" if close_side else "SELL", tp_oid, None, float(signal["take_profit"]), size, "submitted" if tp_ok else "error", tp_result)
+
+        meta = {
+            "stop_order_id": stop_oid,
+            "tp_order_id": tp_oid,
+            "stop_result": stop_result,
+            "tp_result": tp_result,
+        }
+        if not stop_ok or not tp_ok:
+            self.store.upsert_position(
+                symbol,
+                "LONG" if is_long else "SHORT",
+                float(pos.get("entryPx") or signal.get("entry_price") or 0),
+                size,
+                float(signal["stop_loss"]),
+                float(signal.get("take_profit") or 0),
+                "UNPROTECTED",
+                meta=meta,
+            )
+            if bool(CONFIG.get("safe_mode_on_protection_failure", True)):
+                self.guard.enter_safe_mode(f"{symbol} protection order placement failed", {"symbol": symbol, "stop_ok": stop_ok, "tp_ok": tp_ok, "meta": meta})
+                self.notify(f"🛑 {symbol} 保护单挂单失败（SL:{stop_ok} TP:{tp_ok}），系统进入 SAFE_MODE")
+            return False
+
+        self.store.upsert_position(
+            symbol,
+            "LONG" if is_long else "SHORT",
+            float(pos.get("entryPx") or signal.get("entry_price") or 0),
+            size,
+            float(signal["stop_loss"]),
+            float(signal.get("take_profit") or 0),
+            "OPEN",
+            source_order_id=None,
+            opened_at=datetime.now().isoformat(),
+            meta=meta,
+        )
+        self.notify(f"✅ {symbol} 已开仓并挂保护单，方向 {'LONG' if is_long else 'SHORT'}，止损 {float(signal['stop_loss']):.4f}，止盈 {float(signal['take_profit']):.4f}")
+        return True
+
+    def refresh_position_states(self) -> None:
+        account = self.get_account_state()
+        live_symbols = set()
+        for pos in account.get("positions", []):
+            p = pos.get("position", {})
+            symbol = p.get("coin")
+            if symbol and float(p.get("szi", 0) or 0) != 0:
+                live_symbols.add(symbol)
+
+        for local_pos in self.store.get_open_positions():
+            symbol = local_pos["symbol"]
+            if symbol not in live_symbols:
+                self.store.close_position(symbol, meta={"closed_by": "refresh_position_states", "closed_at_check": datetime.now().isoformat()})
+                self.notify(f"✅ {symbol} 本地状态已标记为 CLOSED（检测到交易所已无持仓）")
+
+    def attempt_repair_protection(self) -> None:
+        open_orders = self.get_open_orders()
+        account = self.get_account_state()
+        orders_by_coin: Dict[str, List[Dict]] = {}
+        for order in open_orders or []:
+            coin = order.get("coin")
+            if coin:
+                orders_by_coin.setdefault(coin, []).append(order)
+
+        repaired_any = False
+        for pos in self.store.get_open_positions():
+            symbol = pos["symbol"]
+            live_pos = None
+            for item in account.get("positions", []):
+                p = item.get("position", {})
+                if p.get("coin") == symbol and float(p.get("szi", 0) or 0) != 0:
+                    live_pos = p
+                    break
+            if not live_pos:
+                continue
+
+            symbol_orders = orders_by_coin.get(symbol, [])
+            trigger_orders = [o for o in symbol_orders if str(o.get("orderType", "")).lower().find("trigger") >= 0 or o.get("triggerCondition") or str(o.get("origType", "")).lower().find("trigger") >= 0]
+            has_stop = any(str(o.get("tpsl", "")).lower() == "sl" or str(o.get("orderType", "")).lower().find("sl") >= 0 for o in trigger_orders)
+            has_tp = any(str(o.get("tpsl", "")).lower() == "tp" or str(o.get("orderType", "")).lower().find("tp") >= 0 for o in trigger_orders)
+            if has_stop and has_tp:
+                continue
+
+            signal = {
+                "entry_price": float(pos.get("entry_price") or live_pos.get("entryPx") or 0),
+                "stop_loss": float(pos.get("stop_loss") or 0),
+                "take_profit": float(pos.get("take_profit") or 0),
+            }
+            if signal["stop_loss"] <= 0 or signal["take_profit"] <= 0:
+                self.guard.enter_safe_mode(f"{symbol} protection missing and local SL/TP unavailable", {"symbol": symbol})
+                self.notify(f"🛑 {symbol} 检测到保护单缺失且本地没有有效 SL/TP，进入 SAFE_MODE")
+                continue
+
+            if self.ensure_protection_orders(symbol, signal, confirmed_pos=live_pos):
+                repaired_any = True
+                self.store.record_event("WARN", "protection_repaired", f"Repaired protection orders for {symbol}", {"symbol": symbol})
+                self.notify(f"🛠️ {symbol} 已自动补挂保护单")
+            else:
+                return
+
+        if repaired_any and self.guard.in_safe_mode():
+            self.guard.exit_safe_mode()
+            self.notify("✅ 保护单自动修复完成，已退出 SAFE_MODE")
+
+    def startup_reconcile(self) -> bool:
+        account = self.get_account_state()
+        open_orders = self.get_open_orders()
+        enforce_safe_mode = self.exchange is not None
+        result = reconcile_exchange_state(
+            store=self.store,
+            guard=self.guard,
+            account_state=account,
+            open_orders=open_orders,
+            enforce_safe_mode=enforce_safe_mode,
+        )
+        if result.get("ok"):
+            self.notify("✅ NFI trader 启动对账通过，允许进入运行状态")
+            return True
+
+        if not enforce_safe_mode:
+            logger.warning("startup reconciliation produced warnings in monitor-only mode: %s", result.get("issues"))
+            self.notify(f"⚠️ NFI trader 启动对账存在告警（monitor-only，不拦截运行）：{result.get('issues')}")
+            return True
+
+        self.notify(f"🛑 NFI trader 启动对账失败，进入 SAFE_MODE：{result.get('issues')}")
+        self.attempt_repair_protection()
+        account_after = self.get_account_state()
+        orders_after = self.get_open_orders()
+        result_after = reconcile_exchange_state(
+            store=self.store,
+            guard=self.guard,
+            account_state=account_after,
+            open_orders=orders_after,
+            enforce_safe_mode=True,
+        )
+        if result_after.get("ok"):
+            self.guard.exit_safe_mode()
+            self.notify("✅ 启动后自动修复保护单成功，已退出 SAFE_MODE")
+            return True
+        return False
 
     def _get_nfi_params(self, symbol: str) -> Dict[str, float]:
         params = dict(NFI_DEFAULTS)
@@ -270,9 +553,7 @@ class NostalgiaForInfinityTrader:
                 "total_fees": total_fees,
                 "net_profit": net_profit,
                 "net_profit_pct": net_profit_pct * 100,
-                "reason": (
-                    f"net {net_profit_pct * 100:.2f}% < min {min_profit * 100:.2f}% after fee"
-                ),
+                "reason": f"net {net_profit_pct * 100:.2f}% < min {min_profit * 100:.2f}% after fee",
             }
 
         return {
@@ -284,19 +565,8 @@ class NostalgiaForInfinityTrader:
             "reason": "net profit after fee is acceptable",
         }
 
-    def _calc_confidence_long(
-        self,
-        price: float,
-        bb_lower: float,
-        ema_trend_v: float,
-        ema_long_v: float,
-        rsi_fast_v: float,
-        rsi_main_v: float,
-        volume_v: float,
-        volume_sma_v: float,
-    ) -> float:
+    def _calc_confidence_long(self, price: float, bb_lower: float, ema_trend_v: float, ema_long_v: float, rsi_fast_v: float, rsi_main_v: float, volume_v: float, volume_sma_v: float) -> float:
         confidence = 0.45
-
         if price <= bb_lower:
             confidence += 0.15
         if ema_trend_v > ema_long_v:
@@ -307,22 +577,10 @@ class NostalgiaForInfinityTrader:
             confidence += 0.10
         if volume_sma_v > 0 and volume_v >= volume_sma_v:
             confidence += 0.10
-
         return min(confidence, 1.0)
 
-    def _calc_confidence_short(
-        self,
-        price: float,
-        bb_upper: float,
-        ema_trend_v: float,
-        ema_long_v: float,
-        rsi_fast_v: float,
-        rsi_main_v: float,
-        volume_v: float,
-        volume_sma_v: float,
-    ) -> float:
+    def _calc_confidence_short(self, price: float, bb_upper: float, ema_trend_v: float, ema_long_v: float, rsi_fast_v: float, rsi_main_v: float, volume_v: float, volume_sma_v: float) -> float:
         confidence = 0.45
-
         if price >= bb_upper:
             confidence += 0.15
         if ema_trend_v < ema_long_v:
@@ -333,7 +591,6 @@ class NostalgiaForInfinityTrader:
             confidence += 0.10
         if volume_sma_v > 0 and volume_v >= volume_sma_v:
             confidence += 0.10
-
         return min(confidence, 1.0)
 
     def get_klines(self, symbol: str, interval: str = "1h", limit: int = 260) -> List[Dict]:
@@ -342,7 +599,6 @@ class NostalgiaForInfinityTrader:
             end_time = int(time.time() * 1000)
             hours = max(limit, 100)
             start_time = end_time - (hours * 60 * 60 * 1000)
-
             payload = {
                 "type": "candleSnapshot",
                 "req": {
@@ -352,11 +608,9 @@ class NostalgiaForInfinityTrader:
                     "endTime": end_time,
                 },
             }
-
             resp = requests.post(url, json=payload, timeout=10)
             if resp.status_code != 200:
                 return []
-
             data = resp.json()
             candles = []
             for c in data:
@@ -379,7 +633,6 @@ class NostalgiaForInfinityTrader:
         params = self._get_nfi_params(symbol)
         lookback = int(max(params["ema_long"] + 40, 260))
         klines = self.get_klines(symbol, interval=CONFIG["timeframe"], limit=lookback)
-
         if len(klines) < params["ema_long"] + 5:
             return {"action": "HOLD", "reason": f"{symbol} not enough candles"}
 
@@ -408,48 +661,21 @@ class NostalgiaForInfinityTrader:
         trade_side = str(by_symbol.get(symbol, CONFIG.get("trade_side", "both"))).lower()
         allow_long = trade_side in {"both", "long_only", "long"}
         allow_short = trade_side in {"both", "short_only", "short"}
-        regime_ok = (
-            ema_trend[i] > ema_long[i]
-            and price > ema_long[i] * float(params["regime_price_floor"])
-        )
-        pullback_ok = (
-            price <= bb_lower[i] * float(params["bb_touch_buffer"])
-            or price <= ema_fast[i] * float(params["ema_pullback_buffer"])
-        )
-        rsi_ok = (
-            rsi_fast[i] <= float(params["rsi_fast_buy"])
-            and rsi_main[i] <= float(params["rsi_main_buy"])
-        )
+
+        regime_ok = ema_trend[i] > ema_long[i] and price > ema_long[i] * float(params["regime_price_floor"])
+        pullback_ok = price <= bb_lower[i] * float(params["bb_touch_buffer"]) or price <= ema_fast[i] * float(params["ema_pullback_buffer"])
+        rsi_ok = rsi_fast[i] <= float(params["rsi_fast_buy"]) and rsi_main[i] <= float(params["rsi_main_buy"])
         volume_ok = volume_sma[i] > 0 and volumes[i] >= volume_sma[i] * float(params["min_volume_ratio"])
         not_breakdown = price >= ema_long[i] * (1.0 - float(params["max_breakdown_pct"]))
         stabilizing = closes[i] >= closes[i - 1] or rsi_fast[i] > rsi_fast[i - 1]
-
         long_ok = allow_long and regime_ok and pullback_ok and rsi_ok and volume_ok and not_breakdown and stabilizing
 
-        regime_short = (
-            ema_trend[i] < ema_long[i]
-            and price < ema_long[i] * float(params["regime_price_ceiling"])
-        )
-        pullback_short = (
-            price >= bb_upper[i] * float(params["bb_reject_buffer"])
-            or price >= ema_fast[i] * float(params["ema_bounce_buffer"])
-        )
-        rsi_short = (
-            rsi_fast[i] >= float(params["rsi_fast_sell"])
-            and rsi_main[i] >= float(params["rsi_main_sell"])
-        )
+        regime_short = ema_trend[i] < ema_long[i] and price < ema_long[i] * float(params["regime_price_ceiling"])
+        pullback_short = price >= bb_upper[i] * float(params["bb_reject_buffer"]) or price >= ema_fast[i] * float(params["ema_bounce_buffer"])
+        rsi_short = rsi_fast[i] >= float(params["rsi_fast_sell"]) and rsi_main[i] >= float(params["rsi_main_sell"])
         not_breakout = price <= ema_long[i] * (1.0 + float(params["max_breakout_pct"]))
         stabilizing_short = closes[i] <= closes[i - 1] or rsi_fast[i] < rsi_fast[i - 1]
-        short_ok = (
-            allow_short
-            and short_enabled
-            and regime_short
-            and pullback_short
-            and rsi_short
-            and volume_ok
-            and not_breakout
-            and stabilizing_short
-        )
+        short_ok = allow_short and short_enabled and regime_short and pullback_short and rsi_short and volume_ok and not_breakout and stabilizing_short
 
         if not (long_ok or short_ok):
             reasons = []
@@ -469,42 +695,13 @@ class NostalgiaForInfinityTrader:
 
         side = "LONG"
         if long_ok and short_ok:
-            long_score = (
-                max(0.0, float(params["rsi_fast_buy"]) - rsi_fast[i])
-                + max(0.0, float(params["rsi_main_buy"]) - rsi_main[i])
-                + max(0.0, (bb_lower[i] - price) / price * 100)
-            )
-            short_score = (
-                max(0.0, rsi_fast[i] - float(params["rsi_fast_sell"]))
-                + max(0.0, rsi_main[i] - float(params["rsi_main_sell"]))
-                + max(0.0, (price - bb_upper[i]) / price * 100)
-            )
+            long_score = max(0.0, float(params["rsi_fast_buy"]) - rsi_fast[i]) + max(0.0, float(params["rsi_main_buy"]) - rsi_main[i]) + max(0.0, (bb_lower[i] - price) / price * 100)
+            short_score = max(0.0, rsi_fast[i] - float(params["rsi_fast_sell"])) + max(0.0, rsi_main[i] - float(params["rsi_main_sell"])) + max(0.0, (price - bb_upper[i]) / price * 100)
             side = "SHORT" if short_score > long_score else "LONG"
         elif short_ok:
             side = "SHORT"
 
-        if side == "LONG":
-            confidence = self._calc_confidence_long(
-                price,
-                bb_lower[i],
-                ema_trend[i],
-                ema_long[i],
-                rsi_fast[i],
-                rsi_main[i],
-                volumes[i],
-                volume_sma[i],
-            )
-        else:
-            confidence = self._calc_confidence_short(
-                price,
-                bb_upper[i],
-                ema_trend[i],
-                ema_long[i],
-                rsi_fast[i],
-                rsi_main[i],
-                volumes[i],
-                volume_sma[i],
-            )
+        confidence = self._calc_confidence_long(price, bb_lower[i], ema_trend[i], ema_long[i], rsi_fast[i], rsi_main[i], volumes[i], volume_sma[i]) if side == "LONG" else self._calc_confidence_short(price, bb_upper[i], ema_trend[i], ema_long[i], rsi_fast[i], rsi_main[i], volumes[i], volume_sma[i])
         position_size = self._calc_position_size(confidence)
         if position_size < CONFIG["min_order_value"]:
             return {"action": "HOLD", "reason": f"{symbol} position too small"}
@@ -517,6 +714,7 @@ class NostalgiaForInfinityTrader:
             stop_loss = price + atr_now * float(params["stop_loss_atr_mult"])
             take_profit = price - atr_now * float(params["take_profit_atr_mult"])
             action = "SELL"
+
         fee_check = self._check_profit_after_fees(position_size, price, take_profit)
         if not fee_check["valid"]:
             return {"action": "HOLD", "reason": f"{symbol} {fee_check['reason']}"}
@@ -531,31 +729,46 @@ class NostalgiaForInfinityTrader:
             "take_profit": take_profit,
             "atr": atr_now,
             "fees": fee_check,
-            "reason": (
-                f"{symbol} NFI {side} entry, RSI({rsi_fast[i]:.1f}/{rsi_main[i]:.1f}), "
-                f"SL={params['stop_loss_atr_mult']}xATR TP={params['take_profit_atr_mult']}xATR"
-            ),
+            "reason": f"{symbol} NFI {side} entry, RSI({rsi_fast[i]:.1f}/{rsi_main[i]:.1f}), SL={params['stop_loss_atr_mult']}xATR TP={params['take_profit_atr_mult']}xATR",
         }
 
     def get_account_state(self) -> Dict:
         try:
             state = self.info.user_state(CONFIG["main_wallet"])
             margin = state.get("marginSummary", {})
+            self.guard.record_success()
             return {
                 "account_value": float(margin.get("accountValue", 0)),
                 "withdrawable": float(state.get("withdrawable", 0)),
                 "positions": state.get("assetPositions", []),
             }
+        except requests.Timeout as exc:
+            logger.error("failed to get account state: %s", exc)
+            self.guard.record_api_timeout({"op": "user_state", "error": str(exc)}, threshold=int(CONFIG.get("max_api_timeouts", 5)))
+            return {"account_value": 0.0, "withdrawable": 0.0, "positions": []}
         except Exception as exc:
             logger.error("failed to get account state: %s", exc)
+            self.guard.record_failure("get_account_state failed", {"error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
             return {"account_value": 0.0, "withdrawable": 0.0, "positions": []}
 
     def get_open_orders(self) -> List[Dict]:
         try:
-            return self.info.open_orders(CONFIG["main_wallet"])
-        except Exception as exc:
-            logger.error("failed to get open orders: %s", exc)
-            return []
+            orders = self.info.frontend_open_orders(CONFIG["main_wallet"])
+            self.guard.record_success()
+            return orders
+        except Exception:
+            try:
+                orders = self.info.open_orders(CONFIG["main_wallet"])
+                self.guard.record_success()
+                return orders
+            except requests.Timeout as exc:
+                logger.error("failed to get open orders: %s", exc)
+                self.guard.record_api_timeout({"op": "open_orders", "error": str(exc)}, threshold=int(CONFIG.get("max_api_timeouts", 5)))
+                return []
+            except Exception as exc:
+                logger.error("failed to get open orders: %s", exc)
+                self.guard.record_failure("get_open_orders failed", {"error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
+                return []
 
     def cancel_all_orders(self, symbol: str) -> None:
         if not self.exchange:
@@ -580,25 +793,26 @@ class NostalgiaForInfinityTrader:
             logger.info("monitor-only mode, skip order %s", symbol)
             return {"status": "skipped", "message": "no signing key"}
         try:
-            result = self.exchange.order(
-                symbol,
-                is_buy,
-                size,
-                price,
-                {"limit": {"tif": "Gtc"}},
-                reduce_only=reduce_only,
-            )
+            result = self.exchange.order(symbol, is_buy, size, price, {"limit": {"tif": "Gtc"}}, reduce_only=reduce_only)
             logger.info("order result: %s", result)
+            self.guard.record_success()
             return result
+        except requests.Timeout as exc:
+            logger.error("failed to place order: %s", exc)
+            self.guard.record_api_timeout({"op": "place_order", "symbol": symbol, "error": str(exc)}, threshold=int(CONFIG.get("max_api_timeouts", 5)))
+            return {"status": "error", "message": str(exc)}
         except Exception as exc:
             logger.error("failed to place order: %s", exc)
+            self.guard.record_failure("place_order failed", {"symbol": symbol, "error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
             return {"status": "error", "message": str(exc)}
 
     def can_trade(self) -> bool:
-        if self.last_loss_time:
-            if datetime.now() - self.last_loss_time < timedelta(seconds=CONFIG["trade_cooldown"]):
-                logger.info("cooldown active, skip")
-                return False
+        if self.guard.in_safe_mode():
+            logger.warning("SAFE_MODE active: %s", self.guard.state.get("safe_reason"))
+            return False
+        if self.last_loss_time and datetime.now() - self.last_loss_time < timedelta(seconds=CONFIG["trade_cooldown"]):
+            logger.info("cooldown active, skip")
+            return False
 
         account = self.get_account_state()
         current_value = account["account_value"]
@@ -606,20 +820,17 @@ class NostalgiaForInfinityTrader:
             self.peak_balance = current_value
         if current_value > self.peak_balance:
             self.peak_balance = current_value
-
         if self.peak_balance > 0:
             drawdown = (self.peak_balance - current_value) / self.peak_balance
             if drawdown >= 0.20:
                 logger.warning("drawdown %.2f%% >= 20%%, stop trading", drawdown * 100)
+                self.guard.enter_safe_mode("drawdown >= 20%", {"drawdown": drawdown})
+                self.notify(f"🛑 账户回撤达到 {drawdown * 100:.2f}%，系统进入 SAFE_MODE")
                 return False
         return True
 
     def log_trade(self, signal: Dict, result: Dict) -> None:
-        log_entry = {
-            "time": datetime.now().isoformat(),
-            "signal": signal,
-            "result": result,
-        }
+        log_entry = {"time": datetime.now().isoformat(), "signal": signal, "result": result}
         log_file = LOG_DIR / "trades_nfi.jsonl"
         with log_file.open("a") as f:
             f.write(json.dumps(log_entry) + "\n")
@@ -627,7 +838,7 @@ class NostalgiaForInfinityTrader:
     def run_cycle(self) -> None:
         logger.info("=" * 50)
         logger.info("start NFI cycle")
-
+        self.refresh_position_states()
         if not self.can_trade():
             logger.info("risk guard blocked this cycle")
             return
@@ -638,10 +849,10 @@ class NostalgiaForInfinityTrader:
                 continue
 
             signal = self.analyze_symbol(symbol)
+            self.store.record_signal(symbol, signal.get("action", "HOLD"), signal.get("confidence"), signal.get("reason", ""), signal)
             if signal["action"] == "HOLD":
                 logger.info("%s", signal["reason"])
                 continue
-
             if signal["size"] < CONFIG["min_order_value"]:
                 logger.info("%s position too small %.2f, skip", symbol, signal["size"])
                 continue
@@ -655,30 +866,39 @@ class NostalgiaForInfinityTrader:
 
             fee = signal.get("fees", {})
             if fee:
-                logger.info(
-                    "  net: $%.2f (%.2f%%) fee: $%.2f",
-                    fee.get("net_profit", 0.0),
-                    fee.get("net_profit_pct", 0.0),
-                    fee.get("total_fees", 0.0),
-                )
+                logger.info("  net: $%.2f (%.2f%%) fee: $%.2f", fee.get("net_profit", 0.0), fee.get("net_profit_pct", 0.0), fee.get("total_fees", 0.0))
+
+            if not self.exchange:
+                logger.info("monitor-only signal for %s", symbol)
+                continue
 
             self.cancel_all_orders(symbol)
             is_buy = signal["action"] == "BUY"
-            result = self.place_order(
-                symbol,
-                is_buy,
-                signal["size"] / signal["entry_price"],
-                signal["entry_price"],
-            )
+            order_size = signal["size"] / signal["entry_price"]
+            client_id = str(uuid.uuid4())
+            result = self.place_order(symbol, is_buy, order_size, signal["entry_price"])
             self.log_trade(signal, result)
+            order_id = self._extract_order_id(result)
+            self.store.record_order(symbol, "ENTRY", "BUY" if is_buy else "SELL", order_id, client_id, signal["entry_price"], order_size, result.get("status", "unknown"), result)
 
-            if result.get("status") == "ok":
+            if result.get("status") == "ok" or order_id is not None:
                 logger.info("%s order submitted", symbol)
+                self.notify(f"📈 {symbol} 发出 {'BUY' if is_buy else 'SELL'} 开仓单，入场价 {signal['entry_price']:.4f}")
+                confirmed_pos = self.wait_for_entry_fill(symbol, signal["action"], order_size)
+                if not confirmed_pos:
+                    return
+                if not self.ensure_protection_orders(symbol, signal, confirmed_pos=confirmed_pos):
+                    logger.error("%s protection setup failed", symbol)
+                    return
             else:
                 logger.error("%s order failed: %s", symbol, result)
+                if self.guard.record_failure("entry order failed", {"symbol": symbol, "result": result}, threshold=int(CONFIG.get("max_consecutive_failures", 3))):
+                    self.notify(f"🛑 {symbol} 连续下单失败，系统进入 SAFE_MODE")
 
     def run(self) -> None:
         logger.info("NostalgiaForInfinity-inspired trader started")
+        self.store.record_event("INFO", "startup", "NFI trader started", {"symbols": CONFIG["symbols"]})
+        self.notify(f"🚀 NFI trader 启动，模式: {'LIVE' if self.exchange else 'MONITOR_ONLY'}")
         logger.info("symbols: %s", CONFIG["symbols"])
         logger.info("timeframe: %s", CONFIG["timeframe"])
         by_symbol = CONFIG.get("trade_side_by_symbol") or {}
@@ -687,41 +907,30 @@ class NostalgiaForInfinityTrader:
             logger.info("trade_side %s: %s", symbol, ts)
         for symbol in CONFIG["symbols"]:
             p = self._get_nfi_params(symbol)
-            logger.info(
-                "%s params: ema(%s/%s/%s), rsi(%s/%s<=%.1f/%.1f), bb(%s,%.1f), sl/tp(%.1f/%.1f)xATR",
-                symbol,
-                int(p["ema_fast"]),
-                int(p["ema_trend"]),
-                int(p["ema_long"]),
-                int(p["rsi_fast"]),
-                int(p["rsi_main"]),
-                float(p["rsi_fast_buy"]),
-                float(p["rsi_main_buy"]),
-                int(p["bb_period"]),
-                float(p["bb_stddev"]),
-                float(p["stop_loss_atr_mult"]),
-                float(p["take_profit_atr_mult"]),
-            )
+            logger.info("%s params: ema(%s/%s/%s), rsi(%s/%s<=%.1f/%.1f), bb(%s,%.1f), sl/tp(%.1f/%.1f)xATR", symbol, int(p["ema_fast"]), int(p["ema_trend"]), int(p["ema_long"]), int(p["rsi_fast"]), int(p["rsi_main"]), float(p["rsi_fast_buy"]), float(p["rsi_main_buy"]), int(p["bb_period"]), float(p["bb_stddev"]), float(p["stop_loss_atr_mult"]), float(p["take_profit_atr_mult"]))
+
+        self.startup_reconcile()
 
         while True:
             try:
                 self.run_cycle()
             except Exception as exc:
                 logger.error("cycle exception: %s", exc, exc_info=True)
-
+                self.store.record_event("ERROR", "cycle_exception", str(exc), {})
+                if self.guard.record_failure("cycle exception", {"error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3))):
+                    self.notify(f"🛑 NFI trader 出现连续异常，已进入 SAFE_MODE: {exc}")
             logger.info("sleep %ss", CONFIG["check_interval"])
             time.sleep(CONFIG["check_interval"])
 
 
 def main() -> None:
     load_hl_config()
+    load_runtime_config()
     if not CONFIG["main_wallet"]:
         logger.error("MAIN_WALLET missing in trading-scripts/config/.hl_config")
         raise SystemExit(1)
     if not CONFIG["api_private_key"]:
-        logger.warning(
-            "API_PRIVATE_KEY 缺失：将启动 NFI 进程但仅记录信号；补齐密钥后重启 auto-trader 即可恢复实盘"
-        )
+        logger.warning("API_PRIVATE_KEY 缺失：将启动 NFI 进程但仅记录信号；补齐密钥后重启 auto-trader 即可恢复实盘")
 
     trader = NostalgiaForInfinityTrader()
     trader.run()

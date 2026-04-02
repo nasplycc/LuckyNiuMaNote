@@ -1,0 +1,13 @@
+{
+  "telegram": {
+    "bot_token": "",
+    "chat_id": ""
+  },
+  "risk": {
+    "max_consecutive_failures": 3,
+    "max_api_timeouts": 5,
+    "safe_mode_on_protection_failure": true,
+    "entry_fill_timeout_sec": 20,
+    "entry_fill_poll_interval_sec": 2
+  }
+}
