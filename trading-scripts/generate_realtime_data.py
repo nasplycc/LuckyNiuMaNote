@@ -13,6 +13,33 @@ import requests
 # Hyperliquid API
 HL_API = "https://api.hyperliquid.xyz/info"
 
+
+def read_hl_config():
+    path = Path(__file__).parent / "config" / ".hl_config"
+    if not path.exists():
+        return {}
+    data = {}
+    try:
+        for raw in path.read_text().splitlines():
+            line = raw.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            k, v = line.split('=', 1)
+            data[k.strip()] = v.strip()
+    except Exception:
+        return {}
+    return data
+
+
+def resolve_wallet():
+    env_wallet = os.getenv("LUCKYNIUMA_WALLET")
+    if env_wallet:
+        return env_wallet
+    hl_cfg = read_hl_config()
+    if hl_cfg.get("MAIN_WALLET"):
+        return hl_cfg["MAIN_WALLET"]
+    return "0xfFd91a584cf6419b92E58245898D2A9281c628eb"
+
 def hl_request(body):
     try:
         resp = requests.post(HL_API, json=body, timeout=10)
@@ -107,7 +134,7 @@ def generate_data():
     """生成网站数据"""
     
     # 钱包地址
-    wallet = "0xfFd91a584cf6419b92E58245898D2A9281c628eb"
+    wallet = resolve_wallet()
     
     # 获取数据
     prices = get_prices()

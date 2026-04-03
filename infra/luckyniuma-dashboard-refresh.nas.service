@@ -1,0 +1,17 @@
+[Unit]
+Description=LuckyNiuMa dashboard data refresh loop
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=Jaben
+Group=Users
+WorkingDirectory=/home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNote/trading-scripts
+ExecStart=/bin/bash /home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNote/trading-scripts/realtime_data_cron.sh
+Restart=always
+RestartSec=5
+Environment=PYTHONUNBUFFERED=1
+
+[Install]
+WantedBy=multi-user.target

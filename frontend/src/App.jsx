@@ -4,6 +4,7 @@ import EntryPage from './pages/EntryPage.jsx';
 import LearnPage from './pages/LearnPage.jsx';
 import StrategyPage from './pages/StrategyPage.jsx';
 import ChartPage from './pages/ChartPage.jsx';
+import DashboardPage from './pages/DashboardPage.jsx';
 import { useSiteData } from './lib/data.js';
 
 function App() {
@@ -19,7 +20,8 @@ function App() {
 
   return (
     <Routes>
-      <Route path="/" element={<HomePage data={data} />} />
+      <Route path="/" element={<DashboardPage />} />
+      <Route path="/dashboard" element={<DashboardPage />} />
       <Route path="/entry/:slug" element={<EntryPage data={data} />} />
       <Route path="/strategy" element={<StrategyPage data={data} />} />
       <Route path="/learn" element={<LearnPage data={data} />} />

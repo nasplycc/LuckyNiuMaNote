@@ -1,0 +1,20 @@
+[Unit]
+Description=LuckyNiuMaNote Express（站点与 API）
+After=network.target
+
+[Service]
+Type=simple
+User=Jaben
+Group=Users
+WorkingDirectory=/home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNote
+Environment=NODE_ENV=production
+Environment=LISTEN_HOST=0.0.0.0
+Environment=TRUST_PROXY=1
+Environment=PORT=3000
+Environment=SITE_PUBLIC_URL=http://192.168.31.197:3000
+ExecStart=/home/Jaben/.nvm/versions/node/v24.13.0/bin/node /home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNote/server.js
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

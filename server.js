@@ -7,6 +7,8 @@ const { spawnSync } = require('child_process');
 const app = express();
 const PORT = parseInt(process.env.PORT || '3000', 10);
 const LISTEN_HOST = process.env.LISTEN_HOST || '0.0.0.0';
+const DIST_DIR = path.resolve(__dirname, 'frontend/dist');
+const DIST_INDEX = path.join(DIST_DIR, 'index.html');
 
 if (process.env.TRUST_PROXY === '1') {
   app.set('trust proxy', 1);
@@ -74,11 +76,18 @@ function hlRequest(body) {
 
 // 静态文件服务 - React前端
 app.use('/public', express.static(path.join(__dirname, 'public')));
-app.use(express.static(path.join(__dirname, 'frontend/dist')));
+app.use('/data-export', express.static(path.join(__dirname, 'data-export')));
+app.use(express.static(DIST_DIR));
 
 // 所有路由返回React应用的index.html (SPA支持)
-app.get(['/', '/strategy', '/learn', '/chart', '/entry/:slug'], (req, res) => {
-  res.sendFile(path.join(__dirname, 'frontend/dist', 'index.html'));
+app.get(['/', '/dashboard', '/strategy', '/learn', '/chart', '/entry/:slug'], (req, res) => {
+  try {
+    const html = fs.readFileSync(DIST_INDEX, 'utf8');
+    res.type('html').send(html);
+  } catch (err) {
+    console.error('Failed to serve SPA index:', DIST_INDEX, err.message);
+    res.status(500).send('SPA index not found');
+  }
 });
 
 // ==================== API 路由 ====================
