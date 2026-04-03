@@ -64,7 +64,7 @@ function DiagnosticCard({ item }) {
 
       <div className="diagnostic-grid">
         <div className="diagnostic-side-card">
-          <div className="diagnostic-side-title">做空条件（当前实盘启用）</div>
+          <div className="diagnostic-side-title">实盘做空诊断</div>
           <div className={`diagnostic-ready ${item?.short_setup?.ready ? 'ok' : 'bad'}`}>
             {item?.short_setup?.ready ? '已满足' : '未满足'}
           </div>
@@ -103,10 +103,10 @@ export default function DashboardPage() {
     <Layout>
       <section className="dashboard-hero">
         <div>
-          <div className="dashboard-kicker">LuckyNiuMa 首页</div>
-          <h2 className="dashboard-title">首页总览</h2>
+          <div className="dashboard-kicker">LuckyNiuMa Live</div>
+          <h2 className="dashboard-title">交易运行面板</h2>
           <p className="dashboard-subtitle">
-            这是你自己的 LuckyNiuMa 首页，总览 Spot / Perp 状态、机器人运行状态与未进场原因。
+            这是你自己的 LuckyNiuMa Live，总览 Spot / Perp 状态、机器人运行状态与未进场原因。
           </p>
         </div>
         <div className="dashboard-hero-meta">
@@ -120,6 +120,9 @@ export default function DashboardPage() {
       <div className="stats">
         <MetricCard label="Spot USDC" value={formatMoney(overview?.spot_usdc)} tone="green" />
         <MetricCard label="Perp 权益" value={formatMoney(overview?.perp_equity ?? overview?.equity)} tone="blue" />
+        <MetricCard label="当前模式" value={overview?.bot_mode || 'LIVE'} tone={overview?.bot_mode === 'SAFE_MODE' ? 'red' : 'green'} />
+        <MetricCard label="持仓数" value={String(overview?.open_positions_count ?? 0)} />
+        <MetricCard label="挂单数" value={String(overview?.open_orders_count ?? 0)} />
         <MetricCard label="Perp 可用" value={formatMoney(overview?.perp_available_balance ?? overview?.available_balance)} />
         <MetricCard label="Perp 保证金" value={formatMoney(overview?.perp_margin_used ?? overview?.margin_used)} />
         <MetricCard
@@ -127,9 +130,6 @@ export default function DashboardPage() {
           value={`${overview?.unrealized_pnl >= 0 ? '+' : ''}${formatMoney(overview?.unrealized_pnl)}`}
           tone={overview?.unrealized_pnl >= 0 ? 'green' : 'red'}
         />
-        <MetricCard label="持仓数" value={String(overview?.open_positions_count ?? 0)} />
-        <MetricCard label="挂单数" value={String(overview?.open_orders_count ?? 0)} />
-        <MetricCard label="当前模式" value={overview?.bot_mode || 'LIVE'} tone={overview?.bot_mode === 'SAFE_MODE' ? 'red' : 'green'} />
       </div>
 
       <div className="dashboard-grid">
@@ -165,10 +165,10 @@ export default function DashboardPage() {
           )}
         </section>
 
-        <section className="dashboard-panel dashboard-panel-full">
+        <section className="dashboard-panel dashboard-panel-full dashboard-glossary-panel">
           <div className="panel-header">
-            <h3>诊断字段说明</h3>
-            <span className="panel-badge">中文备注</span>
+            <h3>诊断提示</h3>
+            <span className="panel-badge">快速说明</span>
           </div>
           <div className="dashboard-status-list">
             <div><span>regime</span><strong>趋势环境是否匹配</strong></div>
@@ -176,7 +176,7 @@ export default function DashboardPage() {
             <div><span>volume</span><strong>成交量是否达到触发阈值</strong></div>
             <div><span>stabilizing</span><strong>价格是否出现企稳 / 反转确认</strong></div>
           </div>
-          <div className="empty-state">说明：当前实盘为 short_only，因此首页只展示做空诊断。缺失项越多，代表离做空入场条件越远；不是报错，而是策略还没等到 setup。</div>
+          <div className="glossary-note">当前实盘为 short_only，因此这里只展示实盘做空诊断。缺失项越多，代表离做空入场条件越远；这不是报错，而是策略还没等到入场 setup。</div>
         </section>
 
         <section className="dashboard-panel dashboard-panel-full diagnostic-panel">
