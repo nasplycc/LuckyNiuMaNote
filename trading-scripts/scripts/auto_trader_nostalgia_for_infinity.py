@@ -76,8 +76,8 @@ NFI_DEFAULTS = {
     "regime_price_floor": 0.95,
     "max_breakdown_pct": 0.10,
     "enable_short": True,
-    "rsi_fast_sell": 79.0,
-    "rsi_main_sell": 62.0,
+    "rsi_fast_sell": 75.0,
+    "rsi_main_sell": 60.0,
     "bb_reject_buffer": 0.99,
     "ema_bounce_buffer": 1.015,
     "regime_price_ceiling": 1.05,
@@ -91,8 +91,8 @@ NFI_SYMBOL_OVERRIDES = {
     "ETH": {
         "rsi_fast_buy": 21.0,
         "rsi_main_buy": 34.0,
-        "rsi_fast_sell": 75.0,
-        "rsi_main_sell": 62.0,
+        "rsi_fast_sell": 72.0,
+        "rsi_main_sell": 60.0,
         "stop_loss_atr_mult": 2.8,
         "take_profit_atr_mult": 2.8,
     }
