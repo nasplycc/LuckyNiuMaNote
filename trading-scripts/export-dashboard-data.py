@@ -360,14 +360,14 @@ def nfi_params_for_symbol(symbol: str) -> Dict[str, Any]:
         'ema_fast': 20, 'ema_trend': 50, 'ema_long': 200,
         'rsi_fast': 4, 'rsi_main': 14, 'bb_period': 20, 'bb_stddev': 2.0,
         'volume_sma_period': 30, 'rsi_fast_buy': 23.0, 'rsi_main_buy': 36.0,
-        'rsi_fast_sell': 79.0, 'rsi_main_sell': 62.0, 'min_volume_ratio': 0.65,
+        'rsi_fast_sell': 75.0, 'rsi_main_sell': 60.0, 'min_volume_ratio': 0.65,
         'bb_touch_buffer': 1.01, 'ema_pullback_buffer': 0.985,
         'regime_price_floor': 0.95, 'regime_price_ceiling': 1.05,
         'bb_reject_buffer': 0.99, 'ema_bounce_buffer': 1.015,
         'max_breakdown_pct': 0.10, 'max_breakout_pct': 0.10,
     }
     if symbol == 'ETH':
-        base.update({'rsi_fast_buy': 21.0, 'rsi_main_buy': 34.0, 'rsi_fast_sell': 75.0, 'rsi_main_sell': 62.0})
+        base.update({'rsi_fast_buy': 21.0, 'rsi_main_buy': 34.0, 'rsi_fast_sell': 72.0, 'rsi_main_sell': 60.0})
     return base
 
 
