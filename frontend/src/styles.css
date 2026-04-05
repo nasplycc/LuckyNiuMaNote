@@ -312,6 +312,30 @@ footer { text-align: center; color: var(--text-muted); border-top: 1px solid var
   color: var(--text-primary);
 }
 
+.dashboard-recovery-banner {
+  margin: 18px 0 4px;
+  padding: 14px 16px;
+  border-radius: 12px;
+  border: 1px solid rgba(0, 255, 159, 0.28);
+  background: linear-gradient(180deg, rgba(0, 255, 159, 0.10), rgba(0, 255, 159, 0.04));
+}
+
+.dashboard-recovery-title {
+  font-weight: 700;
+  color: var(--accent);
+  margin-bottom: 6px;
+}
+
+.dashboard-recovery-body {
+  color: var(--text-primary);
+}
+
+.dashboard-recovery-meta {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
 .diagnostic-panel {
   background: linear-gradient(180deg, rgba(191, 0, 255, 0.05), rgba(0, 212, 255, 0.04));
 }

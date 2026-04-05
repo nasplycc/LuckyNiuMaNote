@@ -98,6 +98,7 @@ export default function DashboardPage() {
   const { meta, overview, positions, botStatus, alerts, signalDiagnostics } = data;
   const latestAlerts = (alerts?.alerts || []).slice(0, 5);
   const diagnostics = signalDiagnostics?.diagnostics || [];
+  const recoveryAlert = (alerts?.alerts || []).find((item) => item?.title === 'safe_mode_exit');
 
   return (
     <Layout>
@@ -131,6 +132,18 @@ export default function DashboardPage() {
           tone={overview?.unrealized_pnl >= 0 ? 'green' : 'red'}
         />
       </div>
+
+      {recoveryAlert && !botStatus?.safe_mode ? (
+        <section className="dashboard-recovery-banner">
+          <div className="dashboard-recovery-title">✅ 系统已恢复</div>
+          <div className="dashboard-recovery-body">
+            {recoveryAlert.message || '机器人已自动退出 SAFE_MODE，当前处于正常交易检查状态。'}
+          </div>
+          <div className="dashboard-recovery-meta">
+            恢复时间：{formatTs(recoveryAlert.created_at)}
+          </div>
+        </section>
+      ) : null}
 
       <div className="dashboard-grid">
         <section className="dashboard-panel dashboard-panel-lg">
