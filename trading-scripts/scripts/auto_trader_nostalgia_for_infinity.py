@@ -838,7 +838,7 @@ class NostalgiaForInfinityTrader:
         except Exception:
             return False
         self.guard.exit_safe_mode()
-        self.notify("✅ Hyperliquid API 已恢复连通，系统自动退出 SAFE_MODE，恢复正常交易检查")
+        self.notify("✅ Hyperliquid API 已恢复连通，系统已自动退出 SAFE_MODE，并恢复正常交易检查；当前若仍未开仓，表示只是策略条件尚未满足。")
         return True
 
     def can_trade(self) -> bool:
