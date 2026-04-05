@@ -215,16 +215,19 @@ export default function DashboardPage() {
           </div>
           {latestAlerts.length ? (
             <div className="dashboard-alert-list">
-              {latestAlerts.map((alert) => (
-                <article className={`dashboard-alert-item level-${alert.level || 'info'}`} key={alert.id}>
-                  <div className="dashboard-alert-top">
-                    <strong>{alert.title}</strong>
-                    <span>{formatTs(alert.created_at)}</span>
-                  </div>
-                  <p>{alert.message || '—'}</p>
-                  {alert.symbol && <div className="dashboard-alert-symbol">标的：{alert.symbol}</div>}
-                </article>
-              ))}
+              {latestAlerts.map((alert) => {
+                const isRecovery = alert?.title === 'safe_mode_exit';
+                return (
+                  <article className={`dashboard-alert-item level-${alert.level || 'info'} ${isRecovery ? 'alert-recovery' : ''}`} key={alert.id}>
+                    <div className="dashboard-alert-top">
+                      <strong>{isRecovery ? 'safe_mode_exit · 已恢复' : alert.title}</strong>
+                      <span>{formatTs(alert.created_at)}</span>
+                    </div>
+                    <p>{alert.message || '—'}</p>
+                    {alert.symbol && <div className="dashboard-alert-symbol">标的：{alert.symbol}</div>}
+                  </article>
+                );
+              })}
             </div>
           ) : (
             <div className="empty-state">暂无告警</div>
