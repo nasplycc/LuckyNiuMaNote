@@ -55,6 +55,7 @@ CONFIG = {
     "max_consecutive_failures": 3,
     "max_api_timeouts": 5,
     "safe_mode_on_protection_failure": True,
+    "auto_exit_safe_mode_on_api_recovery": True,
     "entry_fill_timeout_sec": 20,
     "entry_fill_poll_interval_sec": 2,
 }
@@ -223,6 +224,8 @@ def load_runtime_config() -> None:
         CONFIG["max_api_timeouts"] = int(risk_cfg["max_api_timeouts"])
     if "safe_mode_on_protection_failure" in risk_cfg:
         CONFIG["safe_mode_on_protection_failure"] = bool(risk_cfg["safe_mode_on_protection_failure"])
+    if "auto_exit_safe_mode_on_api_recovery" in risk_cfg:
+        CONFIG["auto_exit_safe_mode_on_api_recovery"] = bool(risk_cfg["auto_exit_safe_mode_on_api_recovery"])
     if "entry_fill_timeout_sec" in risk_cfg:
         CONFIG["entry_fill_timeout_sec"] = int(risk_cfg["entry_fill_timeout_sec"])
     if "entry_fill_poll_interval_sec" in risk_cfg:
@@ -814,10 +817,37 @@ class NostalgiaForInfinityTrader:
             self.guard.record_failure("place_order failed", {"symbol": symbol, "error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
             return {"status": "error", "message": str(exc)}
 
+    def _safe_mode_can_auto_recover(self) -> bool:
+        reason = str(self.guard.state.get("safe_reason") or "").lower()
+        if not bool(CONFIG.get("auto_exit_safe_mode_on_api_recovery", True)):
+            return False
+        recoverable_markers = (
+            "get_account_state failed",
+            "get_open_orders failed",
+            "api timeouts >=",
+            "cycle exception",
+        )
+        return any(marker in reason for marker in recoverable_markers)
+
+    def _recover_from_api_safe_mode_if_possible(self) -> bool:
+        if not self.guard.in_safe_mode() or not self._safe_mode_can_auto_recover():
+            return False
+        try:
+            self.get_account_state()
+            self.get_open_orders()
+        except Exception:
+            return False
+        self.guard.exit_safe_mode()
+        self.notify("✅ Hyperliquid API 已恢复连通，系统自动退出 SAFE_MODE，恢复正常交易检查")
+        return True
+
     def can_trade(self) -> bool:
         if self.guard.in_safe_mode():
-            logger.warning("SAFE_MODE active: %s", self.guard.state.get("safe_reason"))
-            return False
+            if self._recover_from_api_safe_mode_if_possible():
+                logger.info("SAFE_MODE auto-cleared after API recovery")
+            else:
+                logger.warning("SAFE_MODE active: %s", self.guard.state.get("safe_reason"))
+                return False
         if self.last_loss_time and datetime.now() - self.last_loss_time < timedelta(seconds=CONFIG["trade_cooldown"]):
             logger.info("cooldown active, skip")
             return False

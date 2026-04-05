@@ -665,12 +665,16 @@ def build_bot_status(ctx: ExportContext) -> Dict[str, Any]:
     risk_guard_state = safe_json_loads(risk_guard.get("value_json"), {})
     last_order = query_one("SELECT created_at FROM orders ORDER BY created_at DESC LIMIT 1")
     last_event = query_one("SELECT created_at FROM system_events ORDER BY created_at DESC LIMIT 1")
+    safe_mode = bool(risk_guard_state.get("safe_mode", False))
+    safe_reason = risk_guard_state.get("safe_reason", "")
+    safe_mode_updated_at = risk_guard.get("updated_at")
 
     return {
         "updated_at": ctx.now_iso,
         **systemd_state,
-        "safe_mode": bool(risk_guard_state.get("safe_mode", False)),
-        "safe_reason": risk_guard_state.get("safe_reason", ""),
+        "safe_mode": safe_mode,
+        "safe_reason": safe_reason,
+        "safe_mode_updated_at": safe_mode_updated_at,
         "monitor_only": not bool(
             os.getenv("HL_API_KEY")
             or read_hl_config().get("API_PRIVATE_KEY")
@@ -693,28 +697,49 @@ def build_alerts(ctx: ExportContext) -> Dict[str, Any]:
     alerts: List[Dict[str, Any]] = []
     seen = set()
     severity_rank = {"critical": 0, "error": 1, "warn": 2, "info": 3}
+    status_rank = {"open": 2, "stale": 1, "resolved": 0}
+    risk_guard = query_one("SELECT value_json, updated_at FROM runtime_state WHERE key='risk_guard'")
+    risk_guard_state = safe_json_loads(risk_guard.get("value_json"), {})
+    current_safe_mode = bool(risk_guard_state.get("safe_mode", False))
+    current_safe_reason = str(risk_guard_state.get("safe_reason") or "")
 
     for row in rows:
         payload = safe_json_loads(row.get("payload_json"), {})
         level = str(row.get("level") or "info").lower()
+        event_type = row.get("event_type") or "system_event"
+        message = row.get("message") or ""
         symbol = payload.get("symbol")
-        dedupe_key = (level, row.get("event_type"), row.get("message"), symbol)
+        dedupe_key = (level, event_type, message, symbol)
         if dedupe_key in seen:
             continue
         seen.add(dedupe_key)
+
+        status = "resolved"
+        if event_type == "safe_mode":
+            status = "open" if current_safe_mode and message == current_safe_reason else "resolved"
+        elif event_type in {"failure", "api_timeout", "cycle_exception"}:
+            status = "open" if current_safe_mode and current_safe_reason and message and message in current_safe_reason else "stale"
+
         alerts.append(
             {
                 "id": f"event_{row.get('id')}",
                 "level": level,
-                "title": row.get("event_type") or "system_event",
-                "message": row.get("message") or "",
+                "title": event_type,
+                "message": message,
                 "symbol": symbol,
                 "created_at": row.get("created_at"),
-                "status": "open",
+                "status": status,
             }
         )
 
-    alerts.sort(key=lambda item: ((item.get("created_at") or ""), -severity_rank.get(item["level"], 9)), reverse=True)
+    alerts.sort(
+        key=lambda item: (
+            status_rank.get(item.get("status") or "resolved", 0),
+            -severity_rank.get(item["level"], 9),
+            item.get("created_at") or "",
+        ),
+        reverse=True,
+    )
 
     return {
         "updated_at": ctx.now_iso,
