@@ -688,26 +688,37 @@ def build_bot_status(ctx: ExportContext) -> Dict[str, Any]:
 
 def build_alerts(ctx: ExportContext) -> Dict[str, Any]:
     rows = query_rows(
-        "SELECT * FROM system_events ORDER BY created_at DESC LIMIT 50"
+        "SELECT * FROM system_events ORDER BY created_at DESC LIMIT 200"
     )
     alerts: List[Dict[str, Any]] = []
+    seen = set()
+    severity_rank = {"critical": 0, "error": 1, "warn": 2, "info": 3}
+
     for row in rows:
         payload = safe_json_loads(row.get("payload_json"), {})
+        level = str(row.get("level") or "info").lower()
+        symbol = payload.get("symbol")
+        dedupe_key = (level, row.get("event_type"), row.get("message"), symbol)
+        if dedupe_key in seen:
+            continue
+        seen.add(dedupe_key)
         alerts.append(
             {
                 "id": f"event_{row.get('id')}",
-                "level": str(row.get("level") or "info").lower(),
+                "level": level,
                 "title": row.get("event_type") or "system_event",
                 "message": row.get("message") or "",
-                "symbol": payload.get("symbol"),
+                "symbol": symbol,
                 "created_at": row.get("created_at"),
                 "status": "open",
             }
         )
 
+    alerts.sort(key=lambda item: ((item.get("created_at") or ""), -severity_rank.get(item["level"], 9)), reverse=True)
+
     return {
         "updated_at": ctx.now_iso,
-        "alerts": alerts,
+        "alerts": alerts[:20],
     }
 
 

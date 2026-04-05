@@ -748,7 +748,11 @@ class NostalgiaForInfinityTrader:
             return {"account_value": 0.0, "withdrawable": 0.0, "positions": []}
         except Exception as exc:
             logger.error("failed to get account state: %s", exc)
-            self.guard.record_failure("get_account_state failed", {"error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
+            triggered = self.guard.record_failure("get_account_state failed", {"error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
+            if triggered:
+                self.notify(f"🛑 获取账户状态连续失败，系统进入 SAFE_MODE\n错误: {exc}")
+            else:
+                self.notify(f"⚠️ 获取账户状态失败\n错误: {exc}")
             return {"account_value": 0.0, "withdrawable": 0.0, "positions": []}
 
     def get_open_orders(self) -> List[Dict]:
@@ -767,7 +771,11 @@ class NostalgiaForInfinityTrader:
                 return []
             except Exception as exc:
                 logger.error("failed to get open orders: %s", exc)
-                self.guard.record_failure("get_open_orders failed", {"error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
+                triggered = self.guard.record_failure("get_open_orders failed", {"error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
+                if triggered:
+                    self.notify(f"🛑 获取挂单状态连续失败，系统进入 SAFE_MODE\n错误: {exc}")
+                else:
+                    self.notify(f"⚠️ 获取挂单状态失败\n错误: {exc}")
                 return []
 
     def cancel_all_orders(self, symbol: str) -> None:
