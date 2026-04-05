@@ -15,6 +15,7 @@ import os
 import time
 import uuid
 from datetime import datetime, timedelta
+from decimal import Decimal, ROUND_DOWN
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
@@ -265,6 +266,7 @@ class NostalgiaForInfinityTrader:
         self.store = StateStore()
         self.notifier = TelegramNotifier()
         self.guard = RiskGuard(self.store)
+        self._size_decimals_cache: Dict[str, int] = {}
         key = (CONFIG.get("api_private_key") or "").strip()
         if key:
             self.account = Account.from_key(key)
@@ -301,6 +303,38 @@ class NostalgiaForInfinityTrader:
                                 return str(oid)
         oid = result.get("oid")
         return str(oid) if oid is not None else None
+
+    def _get_size_decimals(self, symbol: str) -> int:
+        cached = self._size_decimals_cache.get(symbol)
+        if cached is not None:
+            return cached
+        try:
+            meta = self.info.meta()
+            universe = meta.get("universe", []) if isinstance(meta, dict) else []
+            for item in universe:
+                if str(item.get("name") or "").upper() == symbol.upper():
+                    decimals = int(item.get("szDecimals", 0) or 0)
+                    self._size_decimals_cache[symbol] = decimals
+                    return decimals
+        except Exception as exc:
+            logger.warning("failed to fetch szDecimals for %s: %s", symbol, exc)
+        fallback = 3 if symbol.upper() == "BTC" else 2 if symbol.upper() == "ETH" else 3
+        self._size_decimals_cache[symbol] = fallback
+        return fallback
+
+    def _normalize_order_size(self, symbol: str, size: float) -> float:
+        decimals = self._get_size_decimals(symbol)
+        quant = Decimal("1").scaleb(-decimals)
+        normalized = Decimal(str(size)).quantize(quant, rounding=ROUND_DOWN)
+        normalized_f = float(normalized)
+        logger.info(
+            "%s order size normalized: raw=%s normalized=%s szDecimals=%s",
+            symbol,
+            size,
+            normalized_f,
+            decimals,
+        )
+        return normalized_f
 
     def get_position_detail(self, symbol: str) -> Optional[Dict]:
         account = self.get_account_state()
@@ -912,7 +946,12 @@ class NostalgiaForInfinityTrader:
 
             self.cancel_all_orders(symbol)
             is_buy = signal["action"] == "BUY"
-            order_size = signal["size"] / signal["entry_price"]
+            raw_order_size = signal["size"] / signal["entry_price"]
+            order_size = self._normalize_order_size(symbol, raw_order_size)
+            if order_size <= 0:
+                logger.error("%s normalized order size is zero, raw=%s", symbol, raw_order_size)
+                self.store.record_event("ERROR", "entry_size_zero_after_rounding", f"{symbol} order size rounded to zero", {"symbol": symbol, "raw_order_size": raw_order_size})
+                continue
             client_id = str(uuid.uuid4())
             result = self.place_order(symbol, is_buy, order_size, signal["entry_price"])
             self.log_trade(signal, result)
