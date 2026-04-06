@@ -70,6 +70,21 @@ function isWithinRange(ts, range) {
   return true;
 }
 
+function scoreReplayQuality(group) {
+  const pnl = Number(group?.pnl) || 0;
+  const fee = Number(group?.fee) || 0;
+  const durationMs = Number(group?.durationMs) || 0;
+  const feeRatio = Math.abs(pnl) > 0 ? fee / Math.abs(pnl) : (fee > 0 ? 999 : 0);
+
+  if (pnl > 0 && feeRatio < 0.35 && durationMs >= 5 * 60 * 1000) {
+    return { label: '高质量', tone: 'good' };
+  }
+  if (pnl <= 0 || feeRatio >= 1) {
+    return { label: '低质量', tone: 'bad' };
+  }
+  return { label: '中性', tone: 'neutral' };
+}
+
 export default function TradesPage() {
   const { data, loading, error } = useTradesData();
   const [symbolFilter, setSymbolFilter] = useState('ALL');
@@ -176,6 +191,11 @@ export default function TradesPage() {
               durationMs: new Date(trade.ts || 0).getTime() - new Date(openTrade.ts || 0).getTime(),
               pnl: Number(trade.pnl) || 0,
               fee: (Number(openTrade.fee) || 0) + (Number(trade.fee) || 0),
+              quality: scoreReplayQuality({
+                pnl: Number(trade.pnl) || 0,
+                fee: (Number(openTrade.fee) || 0) + (Number(trade.fee) || 0),
+                durationMs: new Date(trade.ts || 0).getTime() - new Date(openTrade.ts || 0).getTime(),
+              }),
             });
           }
           openQueues.set(queueKey, queue);
@@ -294,6 +314,30 @@ export default function TradesPage() {
     return items.slice(0, 4);
   }, [periodPerformance, behaviorInsights]);
 
+  const deteriorationBanner = useMemo(() => {
+    const perf24h = periodPerformance.find((item) => item.key === '24H');
+    const perf7d = periodPerformance.find((item) => item.key === '7D');
+    if (perf24h && perf7d && perf24h.trades > 0 && perf7d.trades > 0 && perf24h.pnl < 0 && perf7d.pnl > 0) {
+      return {
+        tone: 'danger',
+        title: '近期表现出现反转恶化',
+        body: `近 24 小时净盈亏 ${formatMoney(perf24h.pnl, 2)}，而近 7 天仍为 ${formatMoney(perf7d.pnl, 2)}。建议优先查看最近闭环质量与低质量交易。`,
+      };
+    }
+    if (perf24h && perf24h.trades > 0 && perf24h.fee > Math.max(Math.abs(perf24h.pnl), 1)) {
+      return {
+        tone: 'warning',
+        title: '近期手续费侵蚀明显抬升',
+        body: `近 24 小时手续费 ${formatMoney(perf24h.fee, 4)}，已接近或超过该时段净收益。建议关注近期交易频率。`,
+      };
+    }
+    return {
+      tone: 'healthy',
+      title: '近期未发现明显恶化信号',
+      body: '当前可继续关注闭环质量评分与标的表现分化，页面已按优先级给出建议。',
+    };
+  }, [periodPerformance]);
+
   const symbolSummaries = useMemo(() => {
     const map = new Map();
     filteredTrades.forEach((trade) => {
@@ -339,6 +383,12 @@ export default function TradesPage() {
           <div><span>记录数</span><strong>{filteredTrades.length}</strong></div>
           <div><span>更新时间</span><strong>{formatTs(data?.updated_at)}</strong></div>
         </div>
+      </section>
+
+      <section className={`trade-alert-banner ${deteriorationBanner.tone}`}>
+        <div className="trade-alert-banner-kicker">近期诊断</div>
+        <div className="trade-alert-banner-title">{deteriorationBanner.title}</div>
+        <div className="trade-alert-banner-body">{deteriorationBanner.body}</div>
       </section>
 
       <section className="trades-hero-strip">
@@ -413,6 +463,10 @@ export default function TradesPage() {
                   </div>
                   <strong className={group.pnl >= 0 ? 'profit' : 'loss'}>{formatMoney(group.pnl, 2)}</strong>
                 </div>
+                <div className="replay-quality-row">
+                  <span className={`quality-badge ${group.quality?.tone || 'neutral'}`}>{group.quality?.label || '中性'}</span>
+                  <span className="path-text">手续费 {formatMoney(group.fee, 4)}</span>
+                </div>
                 <div className="replay-card-body">
                   <div><span>开仓</span><strong>{formatTs(group.openTrade.ts)}</strong></div>
                   <div><span>平仓</span><strong>{formatTs(group.closeTrade.ts)}</strong></div>
@@ -427,6 +481,35 @@ export default function TradesPage() {
         ) : (
           <div className="empty-state">当前筛选条件下暂时无法组成完整开平仓闭环</div>
         )}
+      </section>
+
+      <section className="dashboard-panel trades-panel">
+        <div className="panel-header">
+          <h3>闭环质量分级</h3>
+          <span className="panel-badge">{replayGroups.length} 组</span>
+        </div>
+        <div className="insight-grid">
+          <div className="insight-card">
+            <span>高质量</span>
+            <strong>{replayGroups.filter((g) => g.quality?.tone === 'good').length}</strong>
+            <small>正收益、手续费占比低、持有时长正常</small>
+          </div>
+          <div className="insight-card">
+            <span>中性</span>
+            <strong>{replayGroups.filter((g) => g.quality?.tone === 'neutral').length}</strong>
+            <small>结果一般，暂无明显质量优势或问题</small>
+          </div>
+          <div className="insight-card warning">
+            <span>低质量</span>
+            <strong>{replayGroups.filter((g) => g.quality?.tone === 'bad').length}</strong>
+            <small>亏损或手续费占比偏高，建议重点复盘</small>
+          </div>
+          <div className="insight-card">
+            <span>最近低质量样本</span>
+            <strong>{behaviorInsights.lowQualityReplay?.symbol || '—'}</strong>
+            <small>{behaviorInsights.lowQualityReplay ? `${behaviorInsights.lowQualityReplay.quality?.label || '低质量'} · ${formatMoney(behaviorInsights.lowQualityReplay.pnl, 2)}` : '暂无明显低质量闭环'}</small>
+          </div>
+        </div>
       </section>
 
       <section className="dashboard-panel trades-panel">
