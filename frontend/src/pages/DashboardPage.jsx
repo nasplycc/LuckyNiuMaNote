@@ -180,6 +180,33 @@ function DiagnosticCard({ item }) {
   );
 }
 
+function CockpitSummary({ overview, runtimeStatus, runtimeTone, positionsCount, alertsCount }) {
+  return (
+    <section className="cockpit-summary-grid">
+      <div className="cockpit-summary-card emphasis">
+        <span className="cockpit-summary-label">账户总览</span>
+        <strong>{formatMoney(overview?.perp_equity ?? overview?.equity)}</strong>
+        <small>Perp 权益</small>
+      </div>
+      <div className="cockpit-summary-card">
+        <span className="cockpit-summary-label">运行状态</span>
+        <strong className={runtimeTone === 'success' ? 'profit' : runtimeTone === 'danger' ? 'loss' : ''}>{runtimeStatus}</strong>
+        <small>服务 / 交易引擎</small>
+      </div>
+      <div className="cockpit-summary-card">
+        <span className="cockpit-summary-label">持仓</span>
+        <strong>{positionsCount}</strong>
+        <small>当前打开仓位</small>
+      </div>
+      <div className="cockpit-summary-card">
+        <span className="cockpit-summary-label">告警</span>
+        <strong>{alertsCount}</strong>
+        <small>最近事件数量</small>
+      </div>
+    </section>
+  );
+}
+
 export default function DashboardPage() {
   const { data, loading, error } = useDashboardData();
 
@@ -201,6 +228,14 @@ export default function DashboardPage() {
 
   return (
     <Layout>
+      <CockpitSummary
+        overview={overview}
+        runtimeStatus={runtimeStatus}
+        runtimeTone={runtimeTone}
+        positionsCount={positions?.positions?.length || 0}
+        alertsCount={latestAlerts.length}
+      />
+
       <section className="dashboard-hero dashboard-hero-refined">
         <div>
           <div className="dashboard-kicker">LuckyNiuMa Live</div>
@@ -222,11 +257,11 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="dashboard-section">
-        <div className="section-heading">
+      <section className="dashboard-section dashboard-section-cockpit">
+        <div className="section-heading section-heading-compact">
           <div>
             <div className="section-kicker">总览</div>
-            <h3>资金与运行概况</h3>
+            <h3>驾驶舱总览</h3>
           </div>
         </div>
         <div className="dashboard-kpi-shell">
