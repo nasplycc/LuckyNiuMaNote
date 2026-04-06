@@ -62,6 +62,7 @@ export default function TradesPage() {
   const [symbolFilter, setSymbolFilter] = useState('ALL');
   const [actionFilter, setActionFilter] = useState('ALL');
   const [rangeFilter, setRangeFilter] = useState('ALL');
+  const [expandedTradeKey, setExpandedTradeKey] = useState(null);
 
   if (loading) {
     return <div className="loading-screen">交易记录加载中...</div>;
@@ -85,8 +86,10 @@ export default function TradesPage() {
     const notional = trade?.notional ?? trade?.value ?? (Number(size) && Number(price) ? Number(size) * Number(price) : null);
     const pnl = trade?.realized_pnl ?? trade?.pnl ?? trade?.closed_pnl;
     const ts = trade?.timestamp || trade?.executed_at || trade?.created_at || trade?.time || trade?.closed_at || trade?.opened_at;
+    const key = `${symbol}-${trade?.trade_id || trade?.hash || ts || idx}-${idx}`;
     return {
       raw: trade,
+      key,
       idx,
       action,
       side,
@@ -114,6 +117,29 @@ export default function TradesPage() {
   const openCount = filteredTrades.filter((trade) => trade.action === '开仓').length;
   const closeCount = filteredTrades.filter((trade) => trade.action === '平仓').length;
 
+  const symbolSummaries = useMemo(() => {
+    const map = new Map();
+    filteredTrades.forEach((trade) => {
+      const current = map.get(trade.symbol) || {
+        symbol: trade.symbol,
+        count: 0,
+        openCount: 0,
+        closeCount: 0,
+        notional: 0,
+        fee: 0,
+        pnl: 0,
+      };
+      current.count += 1;
+      if (trade.action === '开仓') current.openCount += 1;
+      if (trade.action === '平仓') current.closeCount += 1;
+      current.notional += Number(trade.notional) || 0;
+      current.fee += Number(trade.fee) || 0;
+      current.pnl += Number(trade.pnl) || 0;
+      map.set(trade.symbol, current);
+    });
+    return Array.from(map.values()).sort((a, b) => b.notional - a.notional);
+  }, [filteredTrades]);
+
   return (
     <Layout>
       <section className="dashboard-hero">
@@ -138,6 +164,34 @@ export default function TradesPage() {
         <div className="stat-card"><div className="stat-label">累计手续费</div><div className="stat-value">{formatMoney(totalFee, 4)}</div></div>
         <div className="stat-card"><div className="stat-label">累计已实现盈亏</div><div className={`stat-value ${totalPnl >= 0 ? 'green' : 'red'}`}>{formatMoney(totalPnl, 2)}</div></div>
       </div>
+
+      <section className="dashboard-panel trades-panel">
+        <div className="panel-header">
+          <h3>按标的汇总</h3>
+          <span className="panel-badge">{symbolSummaries.length} 个标的</span>
+        </div>
+        {symbolSummaries.length ? (
+          <div className="symbol-summary-grid">
+            {symbolSummaries.map((item) => (
+              <div className="symbol-summary-card" key={item.symbol}>
+                <div className="symbol-summary-top">
+                  <strong>{item.symbol}</strong>
+                  <span>{item.count} 笔</span>
+                </div>
+                <div className="symbol-summary-metrics">
+                  <div><span>开仓</span><strong>{item.openCount}</strong></div>
+                  <div><span>平仓</span><strong>{item.closeCount}</strong></div>
+                  <div><span>成交额</span><strong>{formatMoney(item.notional, 2)}</strong></div>
+                  <div><span>手续费</span><strong>{formatMoney(item.fee, 4)}</strong></div>
+                  <div><span>已实现盈亏</span><strong className={item.pnl >= 0 ? 'profit' : 'loss'}>{formatMoney(item.pnl, 2)}</strong></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">当前筛选条件下没有可展示的标的汇总</div>
+        )}
+      </section>
 
       <section className="dashboard-panel trades-panel">
         <div className="panel-header">
@@ -189,24 +243,43 @@ export default function TradesPage() {
                 </tr>
               </thead>
               <tbody>
-                {filteredTrades.map((trade) => (
-                  <tr key={`${trade.symbol}-${trade.ts || trade.idx}-${trade.idx}`}>
-                    <td>{formatTs(trade.ts)}</td>
-                    <td className="coin">{trade.symbol}</td>
-                    <td>
-                      <span className={`trade-chip ${trade.action === '开仓' ? 'open' : 'close'}`}>{trade.action}</span>
-                    </td>
-                    <td>
-                      <span className={`position-chip ${trade.positionSide === 'LONG' ? 'long' : trade.positionSide === 'SHORT' ? 'short' : ''}`}>{trade.positionSide}</span>
-                    </td>
-                    <td>{trade.side}</td>
-                    <td>{formatNum(trade.size, 6)}</td>
-                    <td>{formatMoney(trade.price, 4)}</td>
-                    <td>{formatMoney(trade.notional, 2)}</td>
-                    <td>{formatMoney(trade.fee, 4)}</td>
-                    <td className={Number(trade.pnl) >= 0 ? 'profit' : 'loss'}>{trade.pnl == null ? '—' : formatMoney(trade.pnl, 2)}</td>
-                  </tr>
-                ))}
+                {filteredTrades.map((trade) => {
+                  const expanded = expandedTradeKey === trade.key;
+                  return (
+                    <>
+                      <tr key={trade.key} className="trade-row" onClick={() => setExpandedTradeKey(expanded ? null : trade.key)}>
+                        <td>{formatTs(trade.ts)}</td>
+                        <td className="coin">{trade.symbol}</td>
+                        <td>
+                          <span className={`trade-chip ${trade.action === '开仓' ? 'open' : 'close'}`}>{trade.action}</span>
+                        </td>
+                        <td>
+                          <span className={`position-chip ${trade.positionSide === 'LONG' ? 'long' : trade.positionSide === 'SHORT' ? 'short' : ''}`}>{trade.positionSide}</span>
+                        </td>
+                        <td>{trade.side}</td>
+                        <td>{formatNum(trade.size, 6)}</td>
+                        <td>{formatMoney(trade.price, 4)}</td>
+                        <td>{formatMoney(trade.notional, 2)}</td>
+                        <td>{formatMoney(trade.fee, 4)}</td>
+                        <td className={Number(trade.pnl) >= 0 ? 'profit' : 'loss'}>{trade.pnl == null ? '—' : formatMoney(trade.pnl, 2)}</td>
+                      </tr>
+                      {expanded ? (
+                        <tr className="trade-detail-row">
+                          <td colSpan="10">
+                            <div className="trade-detail-grid">
+                              <div><span>Trade ID</span><strong>{trade.raw?.trade_id || '—'}</strong></div>
+                              <div><span>Hash</span><strong className="hash-text">{trade.raw?.hash || '—'}</strong></div>
+                              <div><span>原始方向</span><strong>{trade.raw?.raw_direction || '—'}</strong></div>
+                              <div><span>起始仓位</span><strong>{trade.raw?.start_position ?? '—'}</strong></div>
+                              <div><span>来源</span><strong>{trade.raw?.source || '—'}</strong></div>
+                              <div><span>策略标签</span><strong>{trade.raw?.strategy_tag || '—'}</strong></div>
+                            </div>
+                          </td>
+                        </tr>
+                      ) : null}
+                    </>
+                  );
+                })}
               </tbody>
             </table>
           </div>
