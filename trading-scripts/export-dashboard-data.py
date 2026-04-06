@@ -138,6 +138,18 @@ def hl_request(body: Dict[str, Any]) -> Any:
     return resp.json()
 
 
+def fetch_hyperliquid_user_fills() -> List[Dict[str, Any]]:
+    hl_cfg = read_hl_config()
+    wallet = hl_cfg.get("MAIN_WALLET") or DEFAULT_WALLET
+    if not wallet:
+        return []
+    try:
+        data = hl_request({"type": "userFills", "user": wallet})
+        return data if isinstance(data, list) else []
+    except Exception:
+        return []
+
+
 def get_prices() -> Dict[str, float]:
     try:
         mids = hl_request({"type": "allMids"})
@@ -565,92 +577,96 @@ def build_positions(ctx: ExportContext) -> Dict[str, Any]:
 
 
 def build_trades(ctx: ExportContext) -> Dict[str, Any]:
-    order_rows = query_rows(
-        "SELECT * FROM orders ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 100"
-    )
-    position_rows = query_rows(
-        "SELECT * FROM positions ORDER BY COALESCE(closed_at, updated_at, opened_at) DESC LIMIT 100"
-    )
-
+    fills = fetch_hyperliquid_user_fills()
     trades: List[Dict[str, Any]] = []
 
-    for row in order_rows:
-        payload = safe_json_loads(row.get("payload_json"), {})
-        status = str(row.get("status") or "").upper()
-        payload_status = str(payload.get("status") or "").upper()
-        order_type = str(row.get("order_type") or "").upper()
-        side = str(row.get("side") or "").upper()
-        response = payload.get("response") or {}
-        data = response.get("data") or {}
-        statuses = data.get("statuses") or []
-        filled = None
-        if statuses and isinstance(statuses, list):
-            first = statuses[0] or {}
-            filled = first.get("filled") if isinstance(first, dict) else None
-
-        is_executed = bool(filled) or status in {"FILLED", "CLOSED", "EXECUTED", "OK"} or payload_status in {"FILLED", "CLOSED", "EXECUTED", "OK"}
-        if not is_executed:
-            continue
-
-        avg_px = (filled or {}).get("avgPx") if isinstance(filled, dict) else None
-        total_sz = (filled or {}).get("totalSz") if isinstance(filled, dict) else None
-
-        action = "开仓"
-        if order_type in {"TP", "SL", "EXIT", "CLOSE"}:
+    for fill in fills:
+        direction = str(fill.get("dir") or "")
+        direction_upper = direction.upper()
+        if "OPEN" in direction_upper:
+            action = "开仓"
+        elif "CLOSE" in direction_upper:
             action = "平仓"
+        else:
+            action = "成交"
 
-        position_side = payload.get("position_side")
-        if not position_side:
-            if side == "BUY":
-                position_side = "LONG"
-            elif side == "SELL":
-                position_side = "SHORT"
-            else:
-                position_side = "UNKNOWN"
+        if "LONG" in direction_upper:
+            position_side = "LONG"
+        elif "SHORT" in direction_upper:
+            position_side = "SHORT"
+        else:
+            position_side = "UNKNOWN"
+
+        side_code = str(fill.get("side") or "").upper()
+        side = "BUY" if side_code == "B" else "SELL" if side_code == "A" else side_code
+        timestamp_ms = fill.get("time")
+        timestamp = None
+        try:
+            if timestamp_ms is not None:
+                timestamp = datetime.fromtimestamp(float(timestamp_ms) / 1000, tz=timezone.utc).astimezone().isoformat(timespec="seconds")
+        except Exception:
+            timestamp = None
 
         trades.append(
             {
-                "trade_id": row.get("order_id") or f"local_{row.get('id')}",
-                "symbol": row.get("symbol"),
+                "trade_id": str(fill.get("tid") or fill.get("oid") or fill.get("hash") or ""),
+                "symbol": fill.get("coin"),
                 "action": action,
                 "side": side,
                 "position_side": position_side,
-                "price": safe_float(avg_px or row.get("price")),
-                "qty": safe_float(total_sz or row.get("size")),
-                "fee": safe_float(payload.get("fee")),
-                "realized_pnl": safe_float(payload.get("realized_pnl")),
-                "source": payload.get("source", "bot"),
-                "strategy_tag": payload.get("strategy_tag", "NFI"),
-                "timestamp": row.get("updated_at") or row.get("created_at"),
+                "price": safe_float(fill.get("px"), default=None),
+                "qty": safe_float(fill.get("sz"), default=None),
+                "fee": safe_float(fill.get("fee"), default=None),
+                "realized_pnl": safe_float(fill.get("closedPnl"), default=0.0),
+                "source": "hyperliquid_fill",
+                "strategy_tag": "NFI",
+                "timestamp": timestamp,
+                "raw_direction": direction,
+                "hash": fill.get("hash"),
+                "start_position": safe_float(fill.get("startPosition"), default=None),
             }
         )
 
-    for row in position_rows:
-        if str(row.get("status") or "").upper() != "CLOSED":
-            continue
-        meta = safe_json_loads(row.get("meta_json"), {})
-        trades.append(
-            {
-                "trade_id": f"position_close_{row.get('id')}",
-                "symbol": row.get("symbol"),
-                "action": "平仓",
-                "side": row.get("side"),
-                "position_side": row.get("side"),
-                "price": None,
-                "qty": safe_float(row.get("size")),
-                "fee": 0.0,
-                "realized_pnl": safe_float(meta.get("realized_pnl")),
-                "source": meta.get("closed_by", "position_state"),
-                "strategy_tag": meta.get("strategy_tag", "NFI"),
-                "timestamp": row.get("closed_at") or row.get("updated_at"),
-            }
+    if not trades:
+        order_rows = query_rows(
+            "SELECT * FROM orders ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 100"
         )
+        for row in order_rows:
+            payload = safe_json_loads(row.get("payload_json"), {})
+            status = str(row.get("status") or "").upper()
+            payload_status = str(payload.get("status") or "").upper()
+            response = payload.get("response") or {}
+            data = response.get("data") or {}
+            statuses = data.get("statuses") or []
+            filled = None
+            if statuses and isinstance(statuses, list):
+                first = statuses[0] or {}
+                filled = first.get("filled") if isinstance(first, dict) else None
+            is_executed = bool(filled) or status in {"FILLED", "CLOSED", "EXECUTED", "OK"} or payload_status in {"FILLED", "CLOSED", "EXECUTED", "OK"}
+            if not is_executed:
+                continue
+            trades.append(
+                {
+                    "trade_id": row.get("order_id") or f"local_{row.get('id')}",
+                    "symbol": row.get("symbol"),
+                    "action": "成交",
+                    "side": row.get("side"),
+                    "position_side": payload.get("position_side") or "UNKNOWN",
+                    "price": safe_float(((filled or {}).get("avgPx") if isinstance(filled, dict) else None) or row.get("price"), default=None),
+                    "qty": safe_float(((filled or {}).get("totalSz") if isinstance(filled, dict) else None) or row.get("size"), default=None),
+                    "fee": safe_float(payload.get("fee"), default=None),
+                    "realized_pnl": safe_float(payload.get("realized_pnl"), default=0.0),
+                    "source": payload.get("source", "bot"),
+                    "strategy_tag": payload.get("strategy_tag", "NFI"),
+                    "timestamp": row.get("updated_at") or row.get("created_at"),
+                }
+            )
 
     trades.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
 
     return {
         "updated_at": ctx.now_iso,
-        "trades": trades[:50],
+        "trades": trades[:100],
     }
 
 
