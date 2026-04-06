@@ -261,6 +261,29 @@ function CollapsibleSection({ title, badge, defaultOpen = true, children, classN
   );
 }
 
+function CompactHero({ meta, overview, botStatus, runtimeStatus, runtimeTone, positionsCount }) {
+  return (
+    <section className="compact-hero">
+      <div className="compact-hero-main">
+        <div className="dashboard-kicker">LuckyNiuMa Live</div>
+        <h2 className="dashboard-title compact-hero-title">交易总控台</h2>
+        <div className="dashboard-hero-status-row compact-hero-status-row">
+          <span className={`hero-status-pill ${runtimeTone}`}>服务 {runtimeStatus}</span>
+          <span className={`hero-status-pill ${overview?.bot_mode === 'SAFE_MODE' ? 'danger' : 'success'}`}>模式 {overview?.bot_mode || 'LIVE'}</span>
+          <span className="hero-status-pill neutral">持仓 {positionsCount} 个</span>
+          <span className={`hero-status-pill ${botStatus?.monitor_only ? 'warning' : 'success'}`}>{botStatus?.monitor_only ? 'MONITOR_ONLY' : 'LIVE_EXECUTION'}</span>
+        </div>
+      </div>
+      <div className="compact-hero-meta">
+        <div><span>环境</span><strong>{meta?.env || 'production'}</strong></div>
+        <div><span>交易所</span><strong>{meta?.exchange || 'Hyperliquid'}</strong></div>
+        <div><span>版本</span><strong>{botStatus?.version || meta?.git_version || 'unknown'}</strong></div>
+        <div><span>更新时间</span><strong>{formatTs(meta?.generated_at || overview?.updated_at)}</strong></div>
+      </div>
+    </section>
+  );
+}
+
 export default function DashboardPage() {
   const { data, loading, error } = useDashboardData();
 
@@ -299,26 +322,14 @@ export default function DashboardPage() {
         alertsCount={latestAlerts.length}
       />
 
-      <section className="dashboard-hero dashboard-hero-refined">
-        <div>
-          <div className="dashboard-kicker">LuckyNiuMa Live</div>
-          <h2 className="dashboard-title">交易运行面板</h2>
-          <p className="dashboard-subtitle">
-            把资金、风险、持仓、信号和告警拆开看，避免信息全堆在一层造成阅读噪音。
-          </p>
-          <div className="dashboard-hero-status-row">
-            <span className={`hero-status-pill ${runtimeTone}`}>服务 {runtimeStatus}</span>
-            <span className={`hero-status-pill ${overview?.bot_mode === 'SAFE_MODE' ? 'danger' : 'success'}`}>模式 {overview?.bot_mode || 'LIVE'}</span>
-            <span className="hero-status-pill neutral">持仓 {(positions?.positions?.length || 0)} 个</span>
-          </div>
-        </div>
-        <div className="dashboard-hero-meta dashboard-hero-meta-refined">
-          <div><span>环境</span><strong>{meta?.env || 'production'}</strong></div>
-          <div><span>交易所</span><strong>{meta?.exchange || 'Hyperliquid'}</strong></div>
-          <div><span>版本</span><strong>{botStatus?.version || meta?.git_version || 'unknown'}</strong></div>
-          <div><span>更新时间</span><strong>{formatTs(meta?.generated_at || overview?.updated_at)}</strong></div>
-        </div>
-      </section>
+      <CompactHero
+        meta={meta}
+        overview={overview}
+        botStatus={botStatus}
+        runtimeStatus={runtimeStatus}
+        runtimeTone={runtimeTone}
+        positionsCount={positions?.positions?.length || 0}
+      />
 
       <section className="dashboard-section dashboard-section-cockpit dashboard-section-cockpit-compact">
         <div className="section-heading section-heading-compact">
@@ -353,14 +364,14 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      <section className="dashboard-section">
+      <section className="dashboard-section dashboard-section-priority">
         <div className="section-heading">
           <div>
-            <div className="section-kicker">系统层</div>
-            <h3>风险与服务状态</h3>
+            <div className="section-kicker">第一视图</div>
+            <h3>风险与执行</h3>
           </div>
         </div>
-        <div className="dashboard-two-col dashboard-two-col-tight">
+        <div className="dashboard-two-col dashboard-two-col-tight dashboard-two-col-priority">
           <InfoCard title="机器人状态" badge={runtimeStatus} tone="card-priority">
             <div className="status-board">
               <div className={`status-board-pill ${runtimeTone}`}>
@@ -410,38 +421,25 @@ export default function DashboardPage() {
               </div>
             </div>
           </InfoCard>
+          <InfoCard title="当前持仓" badge={`${positions?.positions?.length || 0} 个仓位`} tone="card-secondary">
+            {positions?.positions?.length ? (
+              <div className="dashboard-position-list dashboard-position-list-refined">
+                {positions.positions.map((pos) => (
+                  <PositionCard pos={pos} key={`${pos.symbol}-${pos.side}`} />
+                ))}
+              </div>
+            ) : (
+              <div className="empty-state">当前无持仓</div>
+            )}
+          </InfoCard>
         </div>
       </section>
 
-      <section className="dashboard-section">
+      <section className="dashboard-section dashboard-section-secondary">
         <div className="section-heading">
           <div>
-            <div className="section-kicker">执行层</div>
-            <h3>当前持仓</h3>
-          </div>
-        </div>
-        <section className="dashboard-panel dashboard-panel-full">
-          <div className="panel-header">
-            <h3>当前持仓</h3>
-            <span className="panel-badge">{positions?.positions?.length || 0} 个仓位</span>
-          </div>
-          {positions?.positions?.length ? (
-            <div className="dashboard-position-list dashboard-position-list-refined">
-              {positions.positions.map((pos) => (
-                <PositionCard pos={pos} key={`${pos.symbol}-${pos.side}`} />
-              ))}
-            </div>
-          ) : (
-            <div className="empty-state">当前无持仓</div>
-          )}
-        </section>
-      </section>
-
-      <section className="dashboard-section">
-        <div className="section-heading">
-          <div>
-            <div className="section-kicker">策略层</div>
-            <h3>信号与诊断</h3>
+            <div className="section-kicker">二级信息</div>
+            <h3>摘要与诊断</h3>
           </div>
         </div>
 
