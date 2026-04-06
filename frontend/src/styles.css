@@ -953,6 +953,36 @@ footer {
   overflow-x: auto;
 }
 
+.recommendation-list {
+  display: grid;
+  gap: 12px;
+}
+.recommendation-card {
+  border-radius: 14px;
+  border: 1px solid var(--border);
+  background: rgba(255,255,255,0.02);
+  padding: 14px 16px;
+}
+.recommendation-card.warning {
+  border-color: rgba(245,185,66,0.24);
+  background: linear-gradient(180deg, rgba(245,185,66,0.06), rgba(255,255,255,0.015));
+}
+.recommendation-card.danger {
+  border-color: rgba(255,0,128,0.24);
+  background: linear-gradient(180deg, rgba(255,0,128,0.06), rgba(255,255,255,0.015));
+}
+.recommendation-card.positive {
+  border-color: rgba(0,255,159,0.24);
+  background: linear-gradient(180deg, rgba(0,255,159,0.06), rgba(255,255,255,0.015));
+}
+.recommendation-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+.recommendation-body {
+  color: var(--text-secondary);
+  line-height: 1.6;
+}
 .insight-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));

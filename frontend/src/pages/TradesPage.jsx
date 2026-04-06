@@ -246,6 +246,54 @@ export default function TradesPage() {
     };
   }, [symbolPerformance, replayGroups]);
 
+  const actionSuggestions = useMemo(() => {
+    const items = [];
+    const perf24h = periodPerformance.find((item) => item.key === '24H');
+    const perf7d = periodPerformance.find((item) => item.key === '7D');
+
+    if (perf24h && perf7d && perf24h.trades > 0 && perf7d.trades > 0 && perf24h.pnl < perf7d.pnl / Math.max(perf7d.trades, 1)) {
+      items.push({
+        tone: 'warning',
+        title: '最近 24 小时表现弱于近 7 天均值',
+        body: `近 24 小时净盈亏 ${formatMoney(perf24h.pnl, 2)}，建议优先观察近期入场质量是否下降。`,
+      });
+    }
+
+    if (behaviorInsights.feeHeavySymbol && Number(behaviorInsights.feeHeavySymbol.fee) > Math.max(Math.abs(Number(behaviorInsights.feeHeavySymbol.pnl)), 1)) {
+      items.push({
+        tone: 'warning',
+        title: `${behaviorInsights.feeHeavySymbol.symbol} 手续费侵蚀偏高`,
+        body: `该标的累计手续费 ${formatMoney(behaviorInsights.feeHeavySymbol.fee, 4)}，已接近或超过其净收益，建议关注交易频率与持仓质量。`,
+      });
+    }
+
+    if (behaviorInsights.worstSymbol && Number(behaviorInsights.worstSymbol.pnl) < 0) {
+      items.push({
+        tone: 'danger',
+        title: `${behaviorInsights.worstSymbol.symbol} 当前是主要拖累项`,
+        body: `该标的当前净盈亏 ${formatMoney(behaviorInsights.worstSymbol.pnl, 2)}，胜率 ${behaviorInsights.worstSymbol.winRate.toFixed(1)}%，建议优先复盘其最近闭环。`,
+      });
+    }
+
+    if (behaviorInsights.bestSymbol && Number(behaviorInsights.bestSymbol.pnl) > 0) {
+      items.push({
+        tone: 'positive',
+        title: `${behaviorInsights.bestSymbol.symbol} 目前是优势来源`,
+        body: `该标的当前净盈亏 ${formatMoney(behaviorInsights.bestSymbol.pnl, 2)}，胜率 ${behaviorInsights.bestSymbol.winRate.toFixed(1)}%，可作为策略稳定性参考样本。`,
+      });
+    }
+
+    if (!items.length) {
+      items.push({
+        tone: 'neutral',
+        title: '当前样本偏少，暂未发现明显动作建议',
+        body: '建议继续积累更多闭环交易，再判断哪些标的和时间窗口存在稳定偏差。',
+      });
+    }
+
+    return items.slice(0, 4);
+  }, [periodPerformance, behaviorInsights]);
+
   const symbolSummaries = useMemo(() => {
     const map = new Map();
     filteredTrades.forEach((trade) => {
@@ -460,6 +508,21 @@ export default function TradesPage() {
               <small>{item.trades} 笔平仓 · 胜率 {item.winRate.toFixed(1)}%</small>
               <div className="period-performance-sub">手续费 {formatMoney(item.fee, 4)}</div>
             </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="dashboard-panel trades-panel">
+        <div className="panel-header">
+          <h3>行动建议</h3>
+          <span className="panel-badge">最近恶化 / 优势提示</span>
+        </div>
+        <div className="recommendation-list">
+          {actionSuggestions.map((item, idx) => (
+            <article className={`recommendation-card ${item.tone}`} key={`${item.title}-${idx}`}>
+              <div className="recommendation-title">{item.title}</div>
+              <div className="recommendation-body">{item.body}</div>
+            </article>
           ))}
         </div>
       </section>
