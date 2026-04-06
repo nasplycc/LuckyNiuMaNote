@@ -1581,14 +1581,22 @@ footer {
   .dashboard-grid,
   .dashboard-kpi-main,
   .stats-secondary,
-  .cockpit-summary-grid {
+  .cockpit-summary-grid,
+  .compact-hero,
+  .executive-summary,
+  .trades-hero-strip,
+  .performance-grid,
+  .insight-grid,
+  .performance-symbol-grid,
+  .period-performance-grid {
     grid-template-columns: 1fr;
     flex-direction: column;
   }
 
   .header-status-card,
   .dashboard-hero-meta,
-  .dashboard-hero-meta-refined {
+  .dashboard-hero-meta-refined,
+  .compact-hero-meta {
     min-width: 100%;
     width: 100%;
   }
@@ -1602,10 +1610,36 @@ footer {
   .diagnostic-grid,
   .diagnostic-focus-grid,
   .diagnostic-details-grid,
-  .position-price-compare { grid-template-columns: 1fr; }
+  .position-price-compare,
+  .trade-timeline-metrics,
+  .trade-timeline-detail-grid {
+    grid-template-columns: 1fr;
+  }
 
   .diagnostic-list { grid-template-columns: 1fr; }
-  .position-pnl-hero { align-items: flex-start; flex-direction: column; }
+  .position-pnl-hero,
+  .trade-timeline-top,
+  .replay-card-top,
+  .replay-quality-row,
+  .trades-page-meta-bar,
+  .alert-banner,
+  .executive-summary-item,
+  .compact-hero-meta div {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
   .stats,
   .stats-refined { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
+
+  .trades-page-meta-item,
+  .trade-spotlight-card,
+  .performance-card,
+  .insight-card,
+  .performance-symbol-card,
+  .period-performance-card,
+  .replay-card,
+  .trade-timeline-card {
+    min-width: 0;
+  }
 }
