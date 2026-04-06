@@ -108,6 +108,21 @@ function CompactSection({ title, badge, defaultOpen = false, children }) {
   );
 }
 
+function scoreReplayQuality(group) {
+  const pnl = Number(group?.pnl) || 0;
+  const fee = Number(group?.fee) || 0;
+  const durationMs = Number(group?.durationMs) || 0;
+  const feeRatio = Math.abs(pnl) > 0 ? fee / Math.abs(pnl) : (fee > 0 ? 999 : 0);
+
+  if (pnl > 0 && feeRatio < 0.35 && durationMs >= 5 * 60 * 1000) {
+    return { label: '高质量', tone: 'good' };
+  }
+  if (pnl <= 0 || feeRatio >= 1) {
+    return { label: '低质量', tone: 'bad' };
+  }
+  return { label: '中性', tone: 'neutral' };
+}
+
 export default function TradesPage() {
   const { data, loading, error } = useTradesData();
   const [symbolFilter, setSymbolFilter] = useState('ALL');
