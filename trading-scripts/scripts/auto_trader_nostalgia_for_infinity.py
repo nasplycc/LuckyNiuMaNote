@@ -84,7 +84,7 @@ NFI_DEFAULTS = {
     "ema_bounce_buffer": 1.015,
     "regime_price_ceiling": 1.05,
     "max_breakout_pct": 0.10,
-    "min_volume_ratio": 0.65,
+    "min_volume_ratio": 0.45,
     "stop_loss_atr_mult": 2.4,
     "take_profit_atr_mult": 4.0,
 }
@@ -95,6 +95,7 @@ NFI_SYMBOL_OVERRIDES = {
         "rsi_main_buy": 34.0,
         "rsi_fast_sell": 72.0,
         "rsi_main_sell": 60.0,
+        "min_volume_ratio": 0.35,
         "stop_loss_atr_mult": 2.8,
         "take_profit_atr_mult": 2.8,
     }

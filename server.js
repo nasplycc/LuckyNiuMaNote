@@ -215,9 +215,9 @@ const NFI_DEFAULTS = {
   bb_reject_buffer: 0.99, ema_bounce_buffer: 1.015,
   regime_price_floor: 0.95, regime_price_ceiling: 1.05,
   max_breakdown_pct: 0.10, max_breakout_pct: 0.10,
-  min_volume_ratio: 0.65
+  min_volume_ratio: 0.45
 };
-const NFI_ETH_OVERRIDES = { rsi_fast_sell: 75, rsi_main_sell: 62 };
+const NFI_ETH_OVERRIDES = { rsi_fast_sell: 75, rsi_main_sell: 62, min_volume_ratio: 0.35 };
 
 function nfiEma(values, period) {
   if (!values.length) return [];
