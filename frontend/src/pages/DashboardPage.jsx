@@ -30,17 +30,29 @@ function statusText(botStatus) {
   return String(botStatus.service_status || 'unknown').toUpperCase();
 }
 
-function MetricCard({ label, value, tone = '' }) {
+function MetricCard({ label, value, tone = '', hint = '' }) {
   return (
-    <div className="stat-card">
+    <div className="stat-card stat-card-refined">
       <div className="stat-label">{label}</div>
       <div className={`stat-value ${tone}`}>{value}</div>
+      {hint ? <div className="stat-hint">{hint}</div> : null}
     </div>
   );
 }
 
+function InfoCard({ title, badge, children, tone = '' }) {
+  return (
+    <section className={`dashboard-panel info-card ${tone}`}>
+      <div className="panel-header">
+        <h3>{title}</h3>
+        {badge ? <span className="panel-badge">{badge}</span> : null}
+      </div>
+      {children}
+    </section>
+  );
+}
+
 function DiagnosticCard({ item }) {
-  const longMissing = item?.long_setup?.missing || [];
   const shortMissing = item?.short_setup?.missing || [];
 
   return (
@@ -102,15 +114,15 @@ export default function DashboardPage() {
 
   return (
     <Layout>
-      <section className="dashboard-hero">
+      <section className="dashboard-hero dashboard-hero-refined">
         <div>
           <div className="dashboard-kicker">LuckyNiuMa Live</div>
           <h2 className="dashboard-title">交易运行面板</h2>
           <p className="dashboard-subtitle">
-            这是你自己的 LuckyNiuMa Live，总览 Spot / Perp 状态、机器人运行状态与未进场原因。
+            把资金、风险、持仓、信号和告警拆开看，避免信息全堆在一层造成阅读噪音。
           </p>
         </div>
-        <div className="dashboard-hero-meta">
+        <div className="dashboard-hero-meta dashboard-hero-meta-refined">
           <div><span>环境</span><strong>{meta?.env || 'production'}</strong></div>
           <div><span>交易所</span><strong>{meta?.exchange || 'Hyperliquid'}</strong></div>
           <div><span>版本</span><strong>{botStatus?.version || meta?.git_version || 'unknown'}</strong></div>
@@ -118,20 +130,22 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <div className="stats">
-        <MetricCard label="Spot USDC" value={formatMoney(overview?.spot_usdc)} tone="green" />
-        <MetricCard label="Perp 权益" value={formatMoney(overview?.perp_equity ?? overview?.equity)} tone="blue" />
-        <MetricCard label="当前模式" value={overview?.bot_mode || 'LIVE'} tone={overview?.bot_mode === 'SAFE_MODE' ? 'red' : 'green'} />
-        <MetricCard label="持仓数" value={String(overview?.open_positions_count ?? 0)} />
-        <MetricCard label="挂单数" value={String(overview?.open_orders_count ?? 0)} />
-        <MetricCard label="Perp 可用" value={formatMoney(overview?.perp_available_balance ?? overview?.available_balance)} />
-        <MetricCard label="Perp 保证金" value={formatMoney(overview?.perp_margin_used ?? overview?.margin_used)} />
-        <MetricCard
-          label="Perp 浮动盈亏"
-          value={`${overview?.unrealized_pnl >= 0 ? '+' : ''}${formatMoney(overview?.unrealized_pnl)}`}
-          tone={overview?.unrealized_pnl >= 0 ? 'green' : 'red'}
-        />
-      </div>
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <div className="section-kicker">总览</div>
+            <h3>资金与运行概况</h3>
+          </div>
+        </div>
+        <div className="stats stats-refined">
+          <MetricCard label="Spot USDC" value={formatMoney(overview?.spot_usdc)} tone="green" hint="现货钱包" />
+          <MetricCard label="Perp 权益" value={formatMoney(overview?.perp_equity ?? overview?.equity)} tone="blue" hint="合约账户总权益" />
+          <MetricCard label="当前模式" value={overview?.bot_mode || 'LIVE'} tone={overview?.bot_mode === 'SAFE_MODE' ? 'red' : 'green'} hint="当前交易状态" />
+          <MetricCard label="持仓数" value={String(overview?.open_positions_count ?? 0)} hint="当前打开仓位" />
+          <MetricCard label="挂单数" value={String(overview?.open_orders_count ?? 0)} hint="当前待成交订单" />
+          <MetricCard label="浮动盈亏" value={`${overview?.unrealized_pnl >= 0 ? '+' : ''}${formatMoney(overview?.unrealized_pnl)}`} tone={overview?.unrealized_pnl >= 0 ? 'green' : 'red'} hint="未实现收益" />
+        </div>
+      </section>
 
       {recoveryAlert && !botStatus?.safe_mode ? (
         <section className="dashboard-recovery-banner">
@@ -145,16 +159,55 @@ export default function DashboardPage() {
         </section>
       ) : null}
 
-      <div className="dashboard-grid">
-        <section className="dashboard-panel dashboard-panel-lg">
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <div className="section-kicker">系统层</div>
+            <h3>风险与服务状态</h3>
+          </div>
+        </div>
+        <div className="dashboard-two-col dashboard-two-col-tight">
+          <InfoCard title="机器人状态" badge={statusText(botStatus)} tone="card-priority">
+            <div className="dashboard-status-list dashboard-status-list-refined">
+              <div><span>服务名</span><strong>{botStatus?.service_name || 'luckyniuma-trader.service'}</strong></div>
+              <div><span>systemd</span><strong>{botStatus?.service_status || 'unknown'}</strong></div>
+              <div><span>SAFE_MODE</span><strong>{botStatus?.safe_mode ? 'ON' : 'OFF'}</strong></div>
+              <div><span>Monitor Only</span><strong>{botStatus?.monitor_only ? 'YES' : 'NO'}</strong></div>
+              <div><span>SQLite</span><strong>{botStatus?.sqlite_ok ? 'OK' : 'FAIL'}</strong></div>
+              <div><span>最近心跳</span><strong>{formatTs(botStatus?.last_heartbeat_at)}</strong></div>
+              <div><span>最近交易</span><strong>{formatTs(botStatus?.last_trade_at)}</strong></div>
+              <div><span>最近对账/事件</span><strong>{formatTs(botStatus?.last_reconcile_at)}</strong></div>
+              <div><span>日志文件</span><strong className="path-text">{botStatus?.latest_log_file || '暂无'}</strong></div>
+            </div>
+          </InfoCard>
+
+          <InfoCard title="风险资金占用" badge="Risk" tone="card-secondary">
+            <div className="dashboard-status-list dashboard-status-list-refined">
+              <div><span>Perp 可用</span><strong>{formatMoney(overview?.perp_available_balance ?? overview?.available_balance)}</strong></div>
+              <div><span>Perp 保证金</span><strong>{formatMoney(overview?.perp_margin_used ?? overview?.margin_used)}</strong></div>
+              <div><span>挂单数</span><strong>{String(overview?.open_orders_count ?? 0)}</strong></div>
+              <div><span>持仓数</span><strong>{String(overview?.open_positions_count ?? 0)}</strong></div>
+            </div>
+          </InfoCard>
+        </div>
+      </section>
+
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <div className="section-kicker">执行层</div>
+            <h3>当前持仓</h3>
+          </div>
+        </div>
+        <section className="dashboard-panel dashboard-panel-full">
           <div className="panel-header">
             <h3>当前持仓</h3>
             <span className="panel-badge">{positions?.positions?.length || 0} 个仓位</span>
           </div>
           {positions?.positions?.length ? (
-            <div className="dashboard-position-list">
+            <div className="dashboard-position-list dashboard-position-list-refined">
               {positions.positions.map((pos) => (
-                <article className="dashboard-position-card" key={`${pos.symbol}-${pos.side}`}>
+                <article className="dashboard-position-card dashboard-position-card-refined" key={`${pos.symbol}-${pos.side}`}>
                   <div className="dashboard-position-top">
                     <div>
                       <div className="coin">{pos.symbol}</div>
@@ -177,13 +230,22 @@ export default function DashboardPage() {
             <div className="empty-state">当前无持仓</div>
           )}
         </section>
+      </section>
+
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <div className="section-kicker">策略层</div>
+            <h3>信号与诊断</h3>
+          </div>
+        </div>
 
         <section className="dashboard-panel dashboard-panel-full dashboard-glossary-panel">
           <div className="panel-header">
             <h3>诊断提示</h3>
             <span className="panel-badge">快速说明</span>
           </div>
-          <div className="dashboard-status-list">
+          <div className="dashboard-status-list dashboard-status-list-refined">
             <div><span>regime</span><strong>趋势环境是否匹配</strong></div>
             <div><span>rsi</span><strong>RSI 强弱条件是否达标</strong></div>
             <div><span>volume</span><strong>成交量是否达到触发阈值</strong></div>
@@ -207,14 +269,22 @@ export default function DashboardPage() {
             <div className="empty-state">暂无诊断数据</div>
           )}
         </section>
+      </section>
 
-        <section className="dashboard-panel">
+      <section className="dashboard-section">
+        <div className="section-heading">
+          <div>
+            <div className="section-kicker">事件层</div>
+            <h3>最近告警</h3>
+          </div>
+        </div>
+        <section className="dashboard-panel dashboard-panel-full">
           <div className="panel-header">
             <h3>最近告警</h3>
             <span className="panel-badge">{latestAlerts.length} 条</span>
           </div>
           {latestAlerts.length ? (
-            <div className="dashboard-alert-list">
+            <div className="dashboard-alert-list dashboard-alert-list-refined">
               {latestAlerts.map((alert) => {
                 const isRecovery = alert?.title === 'safe_mode_exit';
                 return (
@@ -233,25 +303,7 @@ export default function DashboardPage() {
             <div className="empty-state">暂无告警</div>
           )}
         </section>
-
-        <section className="dashboard-panel">
-          <div className="panel-header">
-            <h3>机器人状态</h3>
-            <span className={`panel-badge ${botStatus?.process_healthy ? 'ok' : 'bad'}`}>{statusText(botStatus)}</span>
-          </div>
-          <div className="dashboard-status-list">
-            <div><span>服务名</span><strong>{botStatus?.service_name || 'luckyniuma-trader.service'}</strong></div>
-            <div><span>systemd</span><strong>{botStatus?.service_status || 'unknown'}</strong></div>
-            <div><span>SAFE_MODE</span><strong>{botStatus?.safe_mode ? 'ON' : 'OFF'}</strong></div>
-            <div><span>Monitor Only</span><strong>{botStatus?.monitor_only ? 'YES' : 'NO'}</strong></div>
-            <div><span>SQLite</span><strong>{botStatus?.sqlite_ok ? 'OK' : 'FAIL'}</strong></div>
-            <div><span>最近心跳</span><strong>{formatTs(botStatus?.last_heartbeat_at)}</strong></div>
-            <div><span>最近交易</span><strong>{formatTs(botStatus?.last_trade_at)}</strong></div>
-            <div><span>最近对账/事件</span><strong>{formatTs(botStatus?.last_reconcile_at)}</strong></div>
-            <div><span>日志文件</span><strong className="path-text">{botStatus?.latest_log_file || '暂无'}</strong></div>
-          </div>
-        </section>
-      </div>
+      </section>
     </Layout>
   );
 }
