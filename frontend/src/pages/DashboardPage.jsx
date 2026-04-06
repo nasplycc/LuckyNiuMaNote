@@ -181,7 +181,7 @@ function DiagnosticCard({ item }) {
   );
 }
 
-function CockpitSummary({ overview, runtimeStatus, runtimeTone, positionsCount, alertsCount }) {
+function CockpitSummary({ overview, positionsCount, alertsCount }) {
   return (
     <section className="cockpit-summary-grid">
       <div className="cockpit-summary-card emphasis">
@@ -189,17 +189,17 @@ function CockpitSummary({ overview, runtimeStatus, runtimeTone, positionsCount, 
         <strong>{formatMoney(overview?.perp_equity ?? overview?.equity)}</strong>
         <small>Perp 权益</small>
       </div>
-      <div className="cockpit-summary-card">
-        <span className="cockpit-summary-label">运行状态</span>
-        <strong className={runtimeTone === 'success' ? 'profit' : runtimeTone === 'danger' ? 'loss' : ''}>{runtimeStatus}</strong>
-        <small>服务 / 交易引擎</small>
+      <div className="cockpit-summary-card summary-card-neutral">
+        <span className="cockpit-summary-label">当前模式</span>
+        <strong>{overview?.bot_mode || 'LIVE'}</strong>
+        <small>交易状态</small>
       </div>
-      <div className="cockpit-summary-card">
+      <div className="cockpit-summary-card summary-card-info">
         <span className="cockpit-summary-label">持仓</span>
         <strong>{positionsCount}</strong>
         <small>当前打开仓位</small>
       </div>
-      <div className="cockpit-summary-card">
+      <div className="cockpit-summary-card summary-card-warning">
         <span className="cockpit-summary-label">告警</span>
         <strong>{alertsCount}</strong>
         <small>最近事件数量</small>
@@ -224,7 +224,11 @@ function ExecutiveSummary({ overview, botStatus, runtimeStatus, positionsCount, 
               : '系统运行正常，当前无持仓，处于等待机会状态'}
         </div>
         <div className="executive-summary-subline">
-          模式 {overview?.bot_mode || 'LIVE'} · 服务 {runtimeStatus} · 挂单 {overview?.open_orders_count ?? 0} · 持仓 {positionsCount}
+          {topAlert?.title
+            ? `最新关注：${topAlert.title}`
+            : recoveryAlert?.title
+              ? `最近恢复：${recoveryAlert.title}`
+              : `当前模式 ${overview?.bot_mode || 'LIVE'}，等待下一次交易机会`}
         </div>
       </div>
 
@@ -232,10 +236,6 @@ function ExecutiveSummary({ overview, botStatus, runtimeStatus, positionsCount, 
         <div className="executive-summary-item">
           <span>异常优先级</span>
           <strong className={hasRisk ? 'loss' : 'profit'}>{hasRisk ? '需要关注' : '正常'}</strong>
-        </div>
-        <div className="executive-summary-item">
-          <span>最新事件</span>
-          <strong>{topAlert?.title || (recoveryAlert ? 'safe_mode_exit' : '暂无异常')}</strong>
         </div>
       </div>
     </section>
@@ -300,7 +300,7 @@ function AlertBanner({ botStatus, latestAlerts, recoveryAlert }) {
   );
 }
 
-function CompactHero({ meta, overview, botStatus, runtimeStatus, runtimeTone, positionsCount }) {
+function CompactHero({ meta, botStatus, runtimeStatus, runtimeTone, positionsCount }) {
   return (
     <section className="compact-hero">
       <div className="compact-hero-main">
@@ -308,16 +308,15 @@ function CompactHero({ meta, overview, botStatus, runtimeStatus, runtimeTone, po
         <h2 className="dashboard-title compact-hero-title">交易总控台</h2>
         <div className="dashboard-hero-status-row compact-hero-status-row">
           <span className={`hero-status-pill ${runtimeTone}`}>服务 {runtimeStatus}</span>
-          <span className={`hero-status-pill ${overview?.bot_mode === 'SAFE_MODE' ? 'danger' : 'success'}`}>模式 {overview?.bot_mode || 'LIVE'}</span>
-          <span className="hero-status-pill neutral">持仓 {positionsCount} 个</span>
           <span className={`hero-status-pill ${botStatus?.monitor_only ? 'warning' : 'success'}`}>{botStatus?.monitor_only ? 'MONITOR_ONLY' : 'LIVE_EXECUTION'}</span>
+          <span className="hero-status-pill neutral">持仓 {positionsCount} 个</span>
         </div>
       </div>
       <div className="compact-hero-meta">
         <div><span>环境</span><strong>{meta?.env || 'production'}</strong></div>
         <div><span>交易所</span><strong>{meta?.exchange || 'Hyperliquid'}</strong></div>
         <div><span>版本</span><strong>{botStatus?.version || meta?.git_version || 'unknown'}</strong></div>
-        <div><span>更新时间</span><strong>{formatTs(meta?.generated_at || overview?.updated_at)}</strong></div>
+        <div><span>更新时间</span><strong>{formatTs(meta?.generated_at || '暂无')}</strong></div>
       </div>
     </section>
   );
@@ -361,15 +360,12 @@ export default function DashboardPage() {
 
       <CockpitSummary
         overview={overview}
-        runtimeStatus={runtimeStatus}
-        runtimeTone={runtimeTone}
         positionsCount={positions?.positions?.length || 0}
         alertsCount={latestAlerts.length}
       />
 
       <CompactHero
         meta={meta}
-        overview={overview}
         botStatus={botStatus}
         runtimeStatus={runtimeStatus}
         runtimeTone={runtimeTone}
