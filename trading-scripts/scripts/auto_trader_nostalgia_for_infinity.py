@@ -287,6 +287,19 @@ class NostalgiaForInfinityTrader:
         except Exception:
             pass
 
+    def _retry_call(self, label: str, fn, retries: int = 2, delay_sec: float = 1.2):
+        last_exc = None
+        for attempt in range(retries + 1):
+            try:
+                return fn()
+            except Exception as exc:
+                last_exc = exc
+                if attempt >= retries:
+                    break
+                logger.warning("%s attempt %s/%s failed: %s", label, attempt + 1, retries + 1, exc)
+                time.sleep(delay_sec)
+        raise last_exc
+
     def _extract_order_id(self, result: Dict) -> Optional[str]:
         if not isinstance(result, dict):
             return None
@@ -840,7 +853,12 @@ class NostalgiaForInfinityTrader:
 
     def get_account_state(self) -> Dict:
         try:
-            state = self.info.user_state(CONFIG["main_wallet"])
+            state = self._retry_call(
+                "get_account_state",
+                lambda: self.info.user_state(CONFIG["main_wallet"]),
+                retries=2,
+                delay_sec=1.2,
+            )
             margin = state.get("marginSummary", {})
             self.guard.record_success()
             return {
@@ -849,39 +867,49 @@ class NostalgiaForInfinityTrader:
                 "positions": state.get("assetPositions", []),
             }
         except requests.Timeout as exc:
-            logger.error("failed to get account state: %s", exc)
+            logger.error("failed to get account state after retries: %s", exc)
             self.guard.record_api_timeout({"op": "user_state", "error": str(exc)}, threshold=int(CONFIG.get("max_api_timeouts", 5)))
             return {"account_value": 0.0, "withdrawable": 0.0, "positions": []}
         except Exception as exc:
-            logger.error("failed to get account state: %s", exc)
+            logger.error("failed to get account state after retries: %s", exc)
             triggered = self.guard.record_failure("get_account_state failed", {"error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
             if triggered:
                 self.notify(f"🛑 获取账户状态连续失败，系统进入 SAFE_MODE\n错误: {exc}")
             else:
-                self.notify(f"⚠️ 获取账户状态失败\n错误: {exc}")
+                logger.warning("suppressed single account-state alert after internal retries: %s", exc)
             return {"account_value": 0.0, "withdrawable": 0.0, "positions": []}
 
     def get_open_orders(self) -> List[Dict]:
         try:
-            orders = self.info.frontend_open_orders(CONFIG["main_wallet"])
+            orders = self._retry_call(
+                "get_open_orders(frontend)",
+                lambda: self.info.frontend_open_orders(CONFIG["main_wallet"]),
+                retries=1,
+                delay_sec=0.8,
+            )
             self.guard.record_success()
             return orders
         except Exception:
             try:
-                orders = self.info.open_orders(CONFIG["main_wallet"])
+                orders = self._retry_call(
+                    "get_open_orders(legacy)",
+                    lambda: self.info.open_orders(CONFIG["main_wallet"]),
+                    retries=1,
+                    delay_sec=0.8,
+                )
                 self.guard.record_success()
                 return orders
             except requests.Timeout as exc:
-                logger.error("failed to get open orders: %s", exc)
+                logger.error("failed to get open orders after retries: %s", exc)
                 self.guard.record_api_timeout({"op": "open_orders", "error": str(exc)}, threshold=int(CONFIG.get("max_api_timeouts", 5)))
                 return []
             except Exception as exc:
-                logger.error("failed to get open orders: %s", exc)
+                logger.error("failed to get open orders after retries: %s", exc)
                 triggered = self.guard.record_failure("get_open_orders failed", {"error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
                 if triggered:
                     self.notify(f"🛑 获取挂单状态连续失败，系统进入 SAFE_MODE\n错误: {exc}")
                 else:
-                    self.notify(f"⚠️ 获取挂单状态失败\n错误: {exc}")
+                    logger.warning("suppressed single open-orders alert after internal retries: %s", exc)
                 return []
 
     def cancel_all_orders(self, symbol: str) -> None:
