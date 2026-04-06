@@ -37,10 +37,31 @@ function inferAction(trade) {
   return trade?.reduce_only ? '平仓' : '开仓';
 }
 
+function inferPositionSide(trade) {
+  const value = String(trade?.position_side || trade?.raw?.position_side || '').toUpperCase();
+  if (value.includes('LONG')) return 'LONG';
+  if (value.includes('SHORT')) return 'SHORT';
+  return '—';
+}
+
+function isWithinRange(ts, range) {
+  if (range === 'ALL') return true;
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return true;
+  const now = Date.now();
+  const diff = now - d.getTime();
+  const dayMs = 24 * 60 * 60 * 1000;
+  if (range === '1D') return diff <= dayMs;
+  if (range === '7D') return diff <= 7 * dayMs;
+  if (range === '30D') return diff <= 30 * dayMs;
+  return true;
+}
+
 export default function TradesPage() {
   const { data, loading, error } = useTradesData();
   const [symbolFilter, setSymbolFilter] = useState('ALL');
   const [actionFilter, setActionFilter] = useState('ALL');
+  const [rangeFilter, setRangeFilter] = useState('ALL');
 
   if (loading) {
     return <div className="loading-screen">交易记录加载中...</div>;
@@ -56,9 +77,11 @@ export default function TradesPage() {
   const normalizedTrades = useMemo(() => trades.map((trade, idx) => {
     const action = inferAction(trade);
     const side = inferSide(trade);
+    const positionSide = inferPositionSide(trade);
     const symbol = trade?.symbol || trade?.coin || '—';
     const size = trade?.size ?? trade?.sz ?? trade?.qty;
     const price = trade?.price ?? trade?.avg_px ?? trade?.avgPx ?? trade?.entry_price ?? trade?.exit_price;
+    const fee = trade?.fee;
     const notional = trade?.notional ?? trade?.value ?? (Number(size) && Number(price) ? Number(size) * Number(price) : null);
     const pnl = trade?.realized_pnl ?? trade?.pnl ?? trade?.closed_pnl;
     const ts = trade?.timestamp || trade?.executed_at || trade?.created_at || trade?.time || trade?.closed_at || trade?.opened_at;
@@ -67,9 +90,11 @@ export default function TradesPage() {
       idx,
       action,
       side,
+      positionSide,
       symbol,
       size,
       price,
+      fee,
       notional,
       pnl,
       ts,
@@ -79,11 +104,13 @@ export default function TradesPage() {
   const filteredTrades = normalizedTrades.filter((trade) => {
     if (symbolFilter !== 'ALL' && trade.symbol !== symbolFilter) return false;
     if (actionFilter !== 'ALL' && trade.action !== actionFilter) return false;
+    if (!isWithinRange(trade.ts, rangeFilter)) return false;
     return true;
   });
 
   const totalNotional = filteredTrades.reduce((sum, trade) => sum + (Number(trade.notional) || 0), 0);
   const totalPnl = filteredTrades.reduce((sum, trade) => sum + (Number(trade.pnl) || 0), 0);
+  const totalFee = filteredTrades.reduce((sum, trade) => sum + (Number(trade.fee) || 0), 0);
   const openCount = filteredTrades.filter((trade) => trade.action === '开仓').length;
   const closeCount = filteredTrades.filter((trade) => trade.action === '平仓').length;
 
@@ -108,6 +135,7 @@ export default function TradesPage() {
         <div className="stat-card"><div className="stat-label">开仓次数</div><div className="stat-value blue">{openCount}</div></div>
         <div className="stat-card"><div className="stat-label">平仓次数</div><div className="stat-value green">{closeCount}</div></div>
         <div className="stat-card"><div className="stat-label">累计成交额</div><div className="stat-value">{formatMoney(totalNotional, 2)}</div></div>
+        <div className="stat-card"><div className="stat-label">累计手续费</div><div className="stat-value">{formatMoney(totalFee, 4)}</div></div>
         <div className="stat-card"><div className="stat-label">累计已实现盈亏</div><div className={`stat-value ${totalPnl >= 0 ? 'green' : 'red'}`}>{formatMoney(totalPnl, 2)}</div></div>
       </div>
 
@@ -132,6 +160,15 @@ export default function TradesPage() {
               <option value="平仓">平仓</option>
             </select>
           </label>
+          <label>
+            <span>时间范围</span>
+            <select value={rangeFilter} onChange={(e) => setRangeFilter(e.target.value)}>
+              <option value="ALL">全部</option>
+              <option value="1D">近 24 小时</option>
+              <option value="7D">近 7 天</option>
+              <option value="30D">近 30 天</option>
+            </select>
+          </label>
         </div>
 
         {filteredTrades.length ? (
@@ -142,10 +179,12 @@ export default function TradesPage() {
                   <th>时间</th>
                   <th>标的</th>
                   <th>动作</th>
-                  <th>方向</th>
+                  <th>仓位方向</th>
+                  <th>成交方向</th>
                   <th>数量</th>
                   <th>价格</th>
                   <th>成交额</th>
+                  <th>手续费</th>
                   <th>盈亏</th>
                 </tr>
               </thead>
@@ -157,10 +196,14 @@ export default function TradesPage() {
                     <td>
                       <span className={`trade-chip ${trade.action === '开仓' ? 'open' : 'close'}`}>{trade.action}</span>
                     </td>
+                    <td>
+                      <span className={`position-chip ${trade.positionSide === 'LONG' ? 'long' : trade.positionSide === 'SHORT' ? 'short' : ''}`}>{trade.positionSide}</span>
+                    </td>
                     <td>{trade.side}</td>
                     <td>{formatNum(trade.size, 6)}</td>
                     <td>{formatMoney(trade.price, 4)}</td>
                     <td>{formatMoney(trade.notional, 2)}</td>
+                    <td>{formatMoney(trade.fee, 4)}</td>
                     <td className={Number(trade.pnl) >= 0 ? 'profit' : 'loss'}>{trade.pnl == null ? '—' : formatMoney(trade.pnl, 2)}</td>
                   </tr>
                 ))}

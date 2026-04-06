@@ -253,6 +253,29 @@ footer { text-align: center; color: var(--text-muted); border-top: 1px solid var
   overflow-x: auto;
 }
 
+.position-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 60px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  font-size: 0.78rem;
+  border: 1px solid var(--border);
+}
+
+.position-chip.long {
+  color: var(--accent);
+  border-color: rgba(0, 255, 159, 0.45);
+  background: rgba(0, 255, 159, 0.08);
+}
+
+.position-chip.short {
+  color: var(--cyber-pink);
+  border-color: rgba(255, 0, 128, 0.45);
+  background: rgba(255, 0, 128, 0.08);
+}
+
 .trades-table {
   width: 100%;
   border-collapse: collapse;
