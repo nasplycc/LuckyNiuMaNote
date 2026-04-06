@@ -185,6 +185,52 @@ export default function TradesPage() {
     return groups.sort((a, b) => new Date(b.closeTrade.ts || 0).getTime() - new Date(a.closeTrade.ts || 0).getTime());
   }, [filteredTrades]);
 
+  const symbolPerformance = useMemo(() => {
+    const map = new Map();
+    closedTrades.forEach((trade) => {
+      const current = map.get(trade.symbol) || {
+        symbol: trade.symbol,
+        trades: 0,
+        wins: 0,
+        pnl: 0,
+        fee: 0,
+      };
+      current.trades += 1;
+      if (Number(trade.pnl) > 0) current.wins += 1;
+      current.pnl += Number(trade.pnl) || 0;
+      current.fee += Number(trade.fee) || 0;
+      map.set(trade.symbol, current);
+    });
+    return Array.from(map.values())
+      .map((item) => ({
+        ...item,
+        winRate: item.trades ? (item.wins / item.trades) * 100 : 0,
+      }))
+      .sort((a, b) => b.pnl - a.pnl);
+  }, [closedTrades]);
+
+  const periodPerformance = useMemo(() => {
+    const periods = [
+      { key: '24H', label: '近 24 小时', range: '1D' },
+      { key: '7D', label: '近 7 天', range: '7D' },
+      { key: '30D', label: '近 30 天', range: '30D' },
+    ];
+    return periods.map((period) => {
+      const subset = closedTrades.filter((trade) => isWithinRange(trade.ts, period.range));
+      const pnl = subset.reduce((sum, trade) => sum + (Number(trade.pnl) || 0), 0);
+      const fee = subset.reduce((sum, trade) => sum + (Number(trade.fee) || 0), 0);
+      const wins = subset.filter((trade) => Number(trade.pnl) > 0).length;
+      return {
+        ...period,
+        trades: subset.length,
+        wins,
+        pnl,
+        fee,
+        winRate: subset.length ? (wins / subset.length) * 100 : 0,
+      };
+    });
+  }, [closedTrades]);
+
   const symbolSummaries = useMemo(() => {
     const map = new Map();
     filteredTrades.forEach((trade) => {
@@ -321,6 +367,54 @@ export default function TradesPage() {
       </section>
 
       <section className="dashboard-panel trades-panel">
+        <div className="panel-header">
+          <h3>按标的绩效</h3>
+          <span className="panel-badge">{symbolPerformance.length} 个标的</span>
+        </div>
+        {symbolPerformance.length ? (
+          <div className="performance-symbol-grid">
+            {symbolPerformance.map((item) => (
+              <div className="performance-symbol-card" key={`perf-${item.symbol}`}>
+                <div className="symbol-summary-top">
+                  <strong>{item.symbol}</strong>
+                  <span>{item.trades} 笔平仓</span>
+                </div>
+                <div className="symbol-summary-metrics">
+                  <div><span>胜率</span><strong>{item.winRate.toFixed(1)}%</strong></div>
+                  <div><span>净盈亏</span><strong className={item.pnl >= 0 ? 'profit' : 'loss'}>{formatMoney(item.pnl, 2)}</strong></div>
+                  <div><span>手续费</span><strong>{formatMoney(item.fee, 4)}</strong></div>
+                  <div><span>胜场</span><strong>{item.wins}</strong></div>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">暂无可用于按标的绩效分析的已平仓记录</div>
+        )}
+      </section>
+
+      <section className="dashboard-panel trades-panel">
+        <div className="panel-header">
+          <h3>时间维度表现</h3>
+          <span className="panel-badge">最近表现切片</span>
+        </div>
+        <div className="period-performance-grid">
+          {periodPerformance.map((item) => (
+            <div className="period-performance-card" key={item.key}>
+              <span>{item.label}</span>
+              <strong className={item.pnl >= 0 ? 'profit' : 'loss'}>{formatMoney(item.pnl, 2)}</strong>
+              <small>{item.trades} 笔平仓 · 胜率 {item.winRate.toFixed(1)}%</small>
+              <div className="period-performance-sub">手续费 {formatMoney(item.fee, 4)}</div>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="dashboard-panel trades-panel">
+        <div className="panel-header">
+          <h3>按标的汇总</h3>
+          <span className="panel-badge">{symbolSummaries.length} 个标的</span>
+        </div>
         {symbolSummaries.length ? (
           <div className="symbol-summary-grid">
             {symbolSummaries.map((item) => (
