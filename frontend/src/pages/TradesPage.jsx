@@ -231,6 +231,21 @@ export default function TradesPage() {
     });
   }, [closedTrades]);
 
+  const behaviorInsights = useMemo(() => {
+    const bestSymbol = symbolPerformance[0] || null;
+    const worstSymbol = [...symbolPerformance].sort((a, b) => a.pnl - b.pnl)[0] || null;
+    const feeHeavySymbol = [...symbolPerformance].sort((a, b) => b.fee - a.fee)[0] || null;
+    const lowQualityReplay = [...replayGroups]
+      .filter((group) => group.pnl <= 0 || group.fee >= Math.abs(group.pnl || 0))
+      .sort((a, b) => (b.fee - Math.abs(b.pnl || 0)) - (a.fee - Math.abs(a.pnl || 0)))[0] || null;
+    return {
+      bestSymbol,
+      worstSymbol,
+      feeHeavySymbol,
+      lowQualityReplay,
+    };
+  }, [symbolPerformance, replayGroups]);
+
   const symbolSummaries = useMemo(() => {
     const map = new Map();
     filteredTrades.forEach((trade) => {
@@ -364,6 +379,45 @@ export default function TradesPage() {
         ) : (
           <div className="empty-state">当前筛选条件下暂时无法组成完整开平仓闭环</div>
         )}
+      </section>
+
+      <section className="dashboard-panel trades-panel">
+        <div className="panel-header">
+          <h3>交易行为诊断</h3>
+          <span className="panel-badge">结果归因</span>
+        </div>
+        <div className="insight-grid">
+          <div className="insight-card">
+            <span>最赚钱标的</span>
+            <strong>{behaviorInsights.bestSymbol?.symbol || '—'}</strong>
+            <small className={Number(behaviorInsights.bestSymbol?.pnl) >= 0 ? 'profit' : 'loss'}>
+              {behaviorInsights.bestSymbol ? `净盈亏 ${formatMoney(behaviorInsights.bestSymbol.pnl, 2)} · 胜率 ${behaviorInsights.bestSymbol.winRate.toFixed(1)}%` : '暂无足够数据'}
+            </small>
+          </div>
+          <div className="insight-card">
+            <span>最伤收益标的</span>
+            <strong>{behaviorInsights.worstSymbol?.symbol || '—'}</strong>
+            <small className={Number(behaviorInsights.worstSymbol?.pnl) >= 0 ? 'profit' : 'loss'}>
+              {behaviorInsights.worstSymbol ? `净盈亏 ${formatMoney(behaviorInsights.worstSymbol.pnl, 2)} · 胜率 ${behaviorInsights.worstSymbol.winRate.toFixed(1)}%` : '暂无足够数据'}
+            </small>
+          </div>
+          <div className="insight-card">
+            <span>手续费吞噬最大</span>
+            <strong>{behaviorInsights.feeHeavySymbol?.symbol || '—'}</strong>
+            <small>
+              {behaviorInsights.feeHeavySymbol ? `累计手续费 ${formatMoney(behaviorInsights.feeHeavySymbol.fee, 4)}` : '暂无足够数据'}
+            </small>
+          </div>
+          <div className="insight-card warning">
+            <span>低质量闭环提示</span>
+            <strong>{behaviorInsights.lowQualityReplay?.symbol || '—'}</strong>
+            <small>
+              {behaviorInsights.lowQualityReplay
+                ? `盈亏 ${formatMoney(behaviorInsights.lowQualityReplay.pnl, 2)} / 手续费 ${formatMoney(behaviorInsights.lowQualityReplay.fee, 4)} / 持有 ${formatDurationMs(behaviorInsights.lowQualityReplay.durationMs)}`
+                : '暂无明显低质量闭环'}
+            </small>
+          </div>
+        </div>
       </section>
 
       <section className="dashboard-panel trades-panel">
