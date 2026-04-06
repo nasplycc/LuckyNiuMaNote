@@ -15,7 +15,7 @@ import os
 import time
 import uuid
 from datetime import datetime, timedelta
-from decimal import Decimal, ROUND_DOWN
+from decimal import Decimal, ROUND_DOWN, ROUND_HALF_UP
 from pathlib import Path
 from typing import Dict, List, Tuple, Optional
 
@@ -337,6 +337,62 @@ class NostalgiaForInfinityTrader:
         )
         return normalized_f
 
+    def _normalize_trigger_price(self, symbol: str, trigger_price: float) -> float:
+        decimals = max(0, 6 - self._get_size_decimals(symbol))
+        quant = Decimal("1").scaleb(-decimals)
+        normalized = Decimal(str(trigger_price)).quantize(quant, rounding=ROUND_HALF_UP)
+        normalized_f = float(normalized)
+        logger.info(
+            "%s trigger price normalized: raw=%s normalized=%s priceDecimals=%s",
+            symbol,
+            trigger_price,
+            normalized_f,
+            decimals,
+        )
+        return normalized_f
+
+    def _build_position_tpsl_order(self, symbol: str, is_buy: bool, size: float, trigger_price: float, kind: str) -> Dict:
+        # Use SDK's own price formatting to ensure valid tick size
+        limit_px = self.exchange._slippage_price(symbol, is_buy, Exchange.DEFAULT_SLIPPAGE, trigger_price)
+        logger.info(
+            "%s %s order prepared: trigger=%s limit_px=%s size=%s side=%s",
+            symbol,
+            kind,
+            trigger_price,
+            limit_px,
+            size,
+            "BUY" if is_buy else "SELL",
+        )
+        return {
+            "coin": symbol,
+            "is_buy": is_buy,
+            "sz": size,
+            "limit_px": limit_px,
+            "order_type": {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": kind}},
+            "reduce_only": True,
+        }
+
+    def place_position_tpsl(self, symbol: str, is_buy: bool, size: float, stop_price: float, take_profit_price: float) -> Dict:
+        if not self.exchange:
+            return {"status": "skipped", "message": "no signing key"}
+        try:
+            orders = [
+                self._build_position_tpsl_order(symbol, is_buy, size, stop_price, "sl"),
+                self._build_position_tpsl_order(symbol, is_buy, size, take_profit_price, "tp"),
+            ]
+            result = self.exchange.bulk_orders(orders, grouping="positionTpsl")
+            logger.info("positionTpsl order result: %s", result)
+            self.guard.record_success()
+            return result
+        except requests.Timeout as exc:
+            logger.error("failed to place positionTpsl orders: %s", exc)
+            self.guard.record_api_timeout({"op": "place_position_tpsl", "symbol": symbol, "error": str(exc)}, threshold=int(CONFIG.get("max_api_timeouts", 5)))
+            return {"status": "error", "message": str(exc)}
+        except Exception as exc:
+            logger.error("failed to place positionTpsl orders: %s", exc)
+            self.guard.record_failure("place_position_tpsl failed", {"symbol": symbol, "error": str(exc)}, threshold=int(CONFIG.get("max_consecutive_failures", 3)))
+            return {"status": "error", "message": str(exc)}
+
     def get_position_detail(self, symbol: str) -> Optional[Dict]:
         account = self.get_account_state()
         for pos in account.get("positions", []):
@@ -376,13 +432,14 @@ class NostalgiaForInfinityTrader:
     def place_trigger_order(self, symbol: str, is_buy: bool, size: float, trigger_price: float, kind: str) -> Dict:
         if not self.exchange:
             return {"status": "skipped", "message": "no signing key"}
+        normalized_trigger_price = self._normalize_trigger_price(symbol, trigger_price)
         try:
             result = self.exchange.order(
                 symbol,
                 is_buy,
                 size,
-                trigger_price,
-                {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": kind}},
+                0.0,
+                {"trigger": {"triggerPx": normalized_trigger_price, "isMarket": True, "tpsl": kind}},
                 reduce_only=True,
             )
             logger.info("trigger order result: %s", result)
@@ -414,21 +471,32 @@ class NostalgiaForInfinityTrader:
         is_long = float(pos.get("szi", 0) or 0) > 0
         close_side = not is_long
 
-        stop_result = self.place_trigger_order(symbol, close_side, size, float(signal["stop_loss"]), "sl")
-        stop_oid = self._extract_order_id(stop_result)
-        stop_ok = stop_result.get("status") == "ok" or stop_oid is not None
-        self.store.record_order(symbol, "SL", "BUY" if close_side else "SELL", stop_oid, None, float(signal["stop_loss"]), size, "submitted" if stop_ok else "error", stop_result)
+        grouped_result = self.place_position_tpsl(
+            symbol,
+            close_side,
+            size,
+            float(signal["stop_loss"]),
+            float(signal["take_profit"]),
+        )
+        statuses = []
+        if isinstance(grouped_result, dict):
+            response = grouped_result.get("response", {})
+            data = response.get("data", {}) if isinstance(response, dict) else {}
+            statuses = data.get("statuses", []) if isinstance(data, dict) else []
 
-        tp_result = self.place_trigger_order(symbol, close_side, size, float(signal["take_profit"]), "tp")
-        tp_oid = self._extract_order_id(tp_result)
-        tp_ok = tp_result.get("status") == "ok" or tp_oid is not None
-        self.store.record_order(symbol, "TP", "BUY" if close_side else "SELL", tp_oid, None, float(signal["take_profit"]), size, "submitted" if tp_ok else "error", tp_result)
+        stop_status = statuses[0] if len(statuses) > 0 and isinstance(statuses[0], dict) else {}
+        tp_status = statuses[1] if len(statuses) > 1 and isinstance(statuses[1], dict) else {}
+        stop_oid = str((stop_status.get("resting") or {}).get("oid") or (stop_status.get("filled") or {}).get("oid") or "") or None
+        tp_oid = str((tp_status.get("resting") or {}).get("oid") or (tp_status.get("filled") or {}).get("oid") or "") or None
+        stop_ok = bool(stop_oid)
+        tp_ok = bool(tp_oid)
+        self.store.record_order(symbol, "SL", "BUY" if close_side else "SELL", stop_oid, None, float(signal["stop_loss"]), size, "submitted" if stop_ok else "error", stop_status or grouped_result)
+        self.store.record_order(symbol, "TP", "BUY" if close_side else "SELL", tp_oid, None, float(signal["take_profit"]), size, "submitted" if tp_ok else "error", tp_status or grouped_result)
 
         meta = {
+            "grouped_result": grouped_result,
             "stop_order_id": stop_oid,
             "tp_order_id": tp_oid,
-            "stop_result": stop_result,
-            "tp_result": tp_result,
         }
         if not stop_ok or not tp_ok:
             self.store.upsert_position(
