@@ -70,19 +70,42 @@ function isWithinRange(ts, range) {
   return true;
 }
 
-function scoreReplayQuality(group) {
-  const pnl = Number(group?.pnl) || 0;
-  const fee = Number(group?.fee) || 0;
-  const durationMs = Number(group?.durationMs) || 0;
-  const feeRatio = Math.abs(pnl) > 0 ? fee / Math.abs(pnl) : (fee > 0 ? 999 : 0);
+function CollapsibleSection({ title, badge, defaultOpen = true, children, className = '' }) {
+  const [open, setOpen] = useState(defaultOpen);
 
-  if (pnl > 0 && feeRatio < 0.35 && durationMs >= 5 * 60 * 1000) {
-    return { label: '高质量', tone: 'good' };
-  }
-  if (pnl <= 0 || feeRatio >= 1) {
-    return { label: '低质量', tone: 'bad' };
-  }
-  return { label: '中性', tone: 'neutral' };
+  return (
+    <section className={`dashboard-panel dashboard-panel-full collapsible-panel ${className} ${open ? 'open' : 'collapsed'}`}>
+      <div className="panel-header panel-header-clickable" onClick={() => setOpen((v) => !v)}>
+        <div className="panel-header-main">
+          <h3>{title}</h3>
+          {badge ? <span className="panel-badge">{badge}</span> : null}
+        </div>
+        <button type="button" className="collapse-btn" aria-expanded={open}>
+          {open ? '收起' : '展开'}
+        </button>
+      </div>
+      {open ? <div className="collapsible-body">{children}</div> : null}
+    </section>
+  );
+}
+
+function CompactSection({ title, badge, defaultOpen = false, children }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <section className={`dashboard-panel trades-panel collapsible-panel ${open ? 'open' : 'collapsed'}`}>
+      <div className="panel-header panel-header-clickable" onClick={() => setOpen((v) => !v)}>
+        <div className="panel-header-main">
+          <h3>{title}</h3>
+          {badge ? <span className="panel-badge">{badge}</span> : null}
+        </div>
+        <button type="button" className="collapse-btn" aria-expanded={open}>
+          {open ? '收起' : '展开'}
+        </button>
+      </div>
+      {open ? <div className="collapsible-body">{children}</div> : null}
+    </section>
+  );
 }
 
 export default function TradesPage() {
@@ -480,11 +503,7 @@ export default function TradesPage() {
         )}
       </section>
 
-      <section className="dashboard-panel trades-panel">
-        <div className="panel-header">
-          <h3>闭环质量分级</h3>
-          <span className="panel-badge">{replayGroups.length} 组</span>
-        </div>
+      <CompactSection title="闭环质量分级" badge={`${replayGroups.length} 组`} defaultOpen={false}>
         <div className="insight-grid">
           <div className="insight-card">
             <span>高质量</span>
@@ -507,13 +526,9 @@ export default function TradesPage() {
             <small>{behaviorInsights.lowQualityReplay ? `${behaviorInsights.lowQualityReplay.quality?.label || '低质量'} · ${formatMoney(behaviorInsights.lowQualityReplay.pnl, 2)}` : '暂无明显低质量闭环'}</small>
           </div>
         </div>
-      </section>
+      </CompactSection>
 
-      <section className="dashboard-panel trades-panel">
-        <div className="panel-header">
-          <h3>交易行为诊断</h3>
-          <span className="panel-badge">结果归因</span>
-        </div>
+      <CompactSection title="交易行为诊断" badge="结果归因" defaultOpen={false}>
         <div className="insight-grid">
           <div className="insight-card">
             <span>最赚钱标的</span>
@@ -546,13 +561,9 @@ export default function TradesPage() {
             </small>
           </div>
         </div>
-      </section>
+      </CompactSection>
 
-      <section className="dashboard-panel trades-panel">
-        <div className="panel-header">
-          <h3>按标的绩效</h3>
-          <span className="panel-badge">{symbolPerformance.length} 个标的</span>
-        </div>
+      <CompactSection title="按标的绩效" badge={`${symbolPerformance.length} 个标的`} defaultOpen={false}>
         {symbolPerformance.length ? (
           <div className="performance-symbol-grid">
             {symbolPerformance.map((item) => (
@@ -573,13 +584,9 @@ export default function TradesPage() {
         ) : (
           <div className="empty-state">暂无可用于按标的绩效分析的已平仓记录</div>
         )}
-      </section>
+      </CompactSection>
 
-      <section className="dashboard-panel trades-panel">
-        <div className="panel-header">
-          <h3>时间维度表现</h3>
-          <span className="panel-badge">最近表现切片</span>
-        </div>
+      <CompactSection title="时间维度表现" badge="最近表现切片" defaultOpen={false}>
         <div className="period-performance-grid">
           {periodPerformance.map((item) => (
             <div className="period-performance-card" key={item.key}>
@@ -590,13 +597,9 @@ export default function TradesPage() {
             </div>
           ))}
         </div>
-      </section>
+      </CompactSection>
 
-      <section className="dashboard-panel trades-panel">
-        <div className="panel-header">
-          <h3>行动建议</h3>
-          <span className="panel-badge">最近恶化 / 优势提示</span>
-        </div>
+      <CompactSection title="行动建议" badge="最近恶化 / 优势提示" defaultOpen={false}>
         <div className="recommendation-list">
           {actionSuggestions.map((item, idx) => (
             <article className={`recommendation-card ${item.tone}`} key={`${item.title}-${idx}`}>
@@ -605,7 +608,7 @@ export default function TradesPage() {
             </article>
           ))}
         </div>
-      </section>
+      </CompactSection>
 
       <section className="dashboard-panel trades-panel">
         <div className="panel-header">
