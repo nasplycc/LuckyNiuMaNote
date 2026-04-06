@@ -208,6 +208,40 @@ function CockpitSummary({ overview, runtimeStatus, runtimeTone, positionsCount, 
   );
 }
 
+function ExecutiveSummary({ overview, botStatus, runtimeStatus, positionsCount, latestAlerts, recoveryAlert }) {
+  const hasRisk = Boolean(botStatus?.safe_mode || botStatus?.monitor_only || !botStatus?.sqlite_ok);
+  const topAlert = latestAlerts.find((item) => item?.title !== 'safe_mode_exit') || latestAlerts[0];
+
+  return (
+    <section className={`executive-summary ${hasRisk ? 'risk' : 'healthy'}`}>
+      <div className="executive-summary-main">
+        <div className="executive-summary-kicker">老板驾驶舱</div>
+        <div className="executive-summary-headline">
+          {hasRisk
+            ? '当前需优先关注系统/风控状态'
+            : positionsCount > 0
+              ? `系统运行正常，当前有 ${positionsCount} 个持仓在执行`
+              : '系统运行正常，当前无持仓，处于等待机会状态'}
+        </div>
+        <div className="executive-summary-subline">
+          模式 {overview?.bot_mode || 'LIVE'} · 服务 {runtimeStatus} · 挂单 {overview?.open_orders_count ?? 0} · 持仓 {positionsCount}
+        </div>
+      </div>
+
+      <div className="executive-summary-side">
+        <div className="executive-summary-item">
+          <span>异常优先级</span>
+          <strong className={hasRisk ? 'loss' : 'profit'}>{hasRisk ? '需要关注' : '正常'}</strong>
+        </div>
+        <div className="executive-summary-item">
+          <span>最新事件</span>
+          <strong>{topAlert?.title || (recoveryAlert ? 'safe_mode_exit' : '暂无异常')}</strong>
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function CollapsibleSection({ title, badge, defaultOpen = true, children, className = '' }) {
   const [open, setOpen] = useState(defaultOpen);
 
@@ -248,6 +282,15 @@ export default function DashboardPage() {
 
   return (
     <Layout>
+      <ExecutiveSummary
+        overview={overview}
+        botStatus={botStatus}
+        runtimeStatus={runtimeStatus}
+        positionsCount={positions?.positions?.length || 0}
+        latestAlerts={latestAlerts}
+        recoveryAlert={recoveryAlert}
+      />
+
       <CockpitSummary
         overview={overview}
         runtimeStatus={runtimeStatus}
@@ -277,7 +320,7 @@ export default function DashboardPage() {
         </div>
       </section>
 
-      <section className="dashboard-section dashboard-section-cockpit">
+      <section className="dashboard-section dashboard-section-cockpit dashboard-section-cockpit-compact">
         <div className="section-heading section-heading-compact">
           <div>
             <div className="section-kicker">总览</div>
