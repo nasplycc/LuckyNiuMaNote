@@ -31,7 +31,10 @@ function inferSide(trade) {
 }
 
 function inferAction(trade) {
-  const action = String(trade?.action || trade?.type || trade?.event_type || '').toLowerCase();
+  const rawAction = String(trade?.action || trade?.type || trade?.event_type || '');
+  if (rawAction === '开仓' || rawAction === '平仓') return rawAction;
+
+  const action = rawAction.toLowerCase();
   if (action.includes('open') || action.includes('entry')) return '开仓';
   if (action.includes('close') || action.includes('exit')) return '平仓';
   return trade?.reduce_only ? '平仓' : '开仓';
