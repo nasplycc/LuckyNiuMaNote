@@ -30,9 +30,16 @@ function statusText(botStatus) {
   return String(botStatus.service_status || 'unknown').toUpperCase();
 }
 
-function MetricCard({ label, value, tone = '', hint = '' }) {
+function statusTone(botStatus) {
+  if (!botStatus) return 'neutral';
+  if (botStatus.safe_mode) return 'danger';
+  if (botStatus.process_healthy) return 'success';
+  return 'warning';
+}
+
+function MetricCard({ label, value, tone = '', hint = '', featured = false }) {
   return (
-    <div className="stat-card stat-card-refined">
+    <div className={`stat-card stat-card-refined ${featured ? 'stat-card-featured' : ''}`}>
       <div className="stat-label">{label}</div>
       <div className={`stat-value ${tone}`}>{value}</div>
       {hint ? <div className="stat-hint">{hint}</div> : null}
@@ -111,6 +118,9 @@ export default function DashboardPage() {
   const latestAlerts = (alerts?.alerts || []).slice(0, 5);
   const diagnostics = signalDiagnostics?.diagnostics || [];
   const recoveryAlert = (alerts?.alerts || []).find((item) => item?.title === 'safe_mode_exit');
+  const runtimeStatus = statusText(botStatus);
+  const runtimeTone = statusTone(botStatus);
+  const modeTone = overview?.bot_mode === 'SAFE_MODE' ? 'red' : 'green';
 
   return (
     <Layout>
@@ -121,6 +131,11 @@ export default function DashboardPage() {
           <p className="dashboard-subtitle">
             把资金、风险、持仓、信号和告警拆开看，避免信息全堆在一层造成阅读噪音。
           </p>
+          <div className="dashboard-hero-status-row">
+            <span className={`hero-status-pill ${runtimeTone}`}>服务 {runtimeStatus}</span>
+            <span className={`hero-status-pill ${overview?.bot_mode === 'SAFE_MODE' ? 'danger' : 'success'}`}>模式 {overview?.bot_mode || 'LIVE'}</span>
+            <span className="hero-status-pill neutral">持仓 {(positions?.positions?.length || 0)} 个</span>
+          </div>
         </div>
         <div className="dashboard-hero-meta dashboard-hero-meta-refined">
           <div><span>环境</span><strong>{meta?.env || 'production'}</strong></div>
@@ -137,13 +152,17 @@ export default function DashboardPage() {
             <h3>资金与运行概况</h3>
           </div>
         </div>
-        <div className="stats stats-refined">
-          <MetricCard label="Spot USDC" value={formatMoney(overview?.spot_usdc)} tone="green" hint="现货钱包" />
-          <MetricCard label="Perp 权益" value={formatMoney(overview?.perp_equity ?? overview?.equity)} tone="blue" hint="合约账户总权益" />
-          <MetricCard label="当前模式" value={overview?.bot_mode || 'LIVE'} tone={overview?.bot_mode === 'SAFE_MODE' ? 'red' : 'green'} hint="当前交易状态" />
-          <MetricCard label="持仓数" value={String(overview?.open_positions_count ?? 0)} hint="当前打开仓位" />
-          <MetricCard label="挂单数" value={String(overview?.open_orders_count ?? 0)} hint="当前待成交订单" />
-          <MetricCard label="浮动盈亏" value={`${overview?.unrealized_pnl >= 0 ? '+' : ''}${formatMoney(overview?.unrealized_pnl)}`} tone={overview?.unrealized_pnl >= 0 ? 'green' : 'red'} hint="未实现收益" />
+        <div className="dashboard-kpi-shell">
+          <div className="dashboard-kpi-main">
+            <MetricCard label="Perp 权益" value={formatMoney(overview?.perp_equity ?? overview?.equity)} tone="blue" hint="合约账户总权益" featured />
+            <MetricCard label="浮动盈亏" value={`${overview?.unrealized_pnl >= 0 ? '+' : ''}${formatMoney(overview?.unrealized_pnl)}`} tone={overview?.unrealized_pnl >= 0 ? 'green' : 'red'} hint="未实现收益" featured />
+            <MetricCard label="当前模式" value={overview?.bot_mode || 'LIVE'} tone={modeTone} hint="当前交易状态" featured />
+          </div>
+          <div className="stats stats-refined stats-secondary">
+            <MetricCard label="Spot USDC" value={formatMoney(overview?.spot_usdc)} tone="green" hint="现货钱包" />
+            <MetricCard label="持仓数" value={String(overview?.open_positions_count ?? 0)} hint="当前打开仓位" />
+            <MetricCard label="挂单数" value={String(overview?.open_orders_count ?? 0)} hint="当前待成交订单" />
+          </div>
         </div>
       </section>
 
@@ -167,13 +186,28 @@ export default function DashboardPage() {
           </div>
         </div>
         <div className="dashboard-two-col dashboard-two-col-tight">
-          <InfoCard title="机器人状态" badge={statusText(botStatus)} tone="card-priority">
+          <InfoCard title="机器人状态" badge={runtimeStatus} tone="card-priority">
+            <div className="status-board">
+              <div className={`status-board-pill ${runtimeTone}`}>
+                <span className="status-board-label">运行</span>
+                <strong>{runtimeStatus}</strong>
+              </div>
+              <div className={`status-board-pill ${botStatus?.safe_mode ? 'danger' : 'success'}`}>
+                <span className="status-board-label">SAFE_MODE</span>
+                <strong>{botStatus?.safe_mode ? 'ON' : 'OFF'}</strong>
+              </div>
+              <div className={`status-board-pill ${botStatus?.monitor_only ? 'warning' : 'success'}`}>
+                <span className="status-board-label">MONITOR</span>
+                <strong>{botStatus?.monitor_only ? 'ONLY' : 'LIVE'}</strong>
+              </div>
+              <div className={`status-board-pill ${botStatus?.sqlite_ok ? 'success' : 'danger'}`}>
+                <span className="status-board-label">SQLITE</span>
+                <strong>{botStatus?.sqlite_ok ? 'OK' : 'FAIL'}</strong>
+              </div>
+            </div>
             <div className="dashboard-status-list dashboard-status-list-refined">
               <div><span>服务名</span><strong>{botStatus?.service_name || 'luckyniuma-trader.service'}</strong></div>
               <div><span>systemd</span><strong>{botStatus?.service_status || 'unknown'}</strong></div>
-              <div><span>SAFE_MODE</span><strong>{botStatus?.safe_mode ? 'ON' : 'OFF'}</strong></div>
-              <div><span>Monitor Only</span><strong>{botStatus?.monitor_only ? 'YES' : 'NO'}</strong></div>
-              <div><span>SQLite</span><strong>{botStatus?.sqlite_ok ? 'OK' : 'FAIL'}</strong></div>
               <div><span>最近心跳</span><strong>{formatTs(botStatus?.last_heartbeat_at)}</strong></div>
               <div><span>最近交易</span><strong>{formatTs(botStatus?.last_trade_at)}</strong></div>
               <div><span>最近对账/事件</span><strong>{formatTs(botStatus?.last_reconcile_at)}</strong></div>
@@ -182,11 +216,23 @@ export default function DashboardPage() {
           </InfoCard>
 
           <InfoCard title="风险资金占用" badge="Risk" tone="card-secondary">
-            <div className="dashboard-status-list dashboard-status-list-refined">
-              <div><span>Perp 可用</span><strong>{formatMoney(overview?.perp_available_balance ?? overview?.available_balance)}</strong></div>
-              <div><span>Perp 保证金</span><strong>{formatMoney(overview?.perp_margin_used ?? overview?.margin_used)}</strong></div>
-              <div><span>挂单数</span><strong>{String(overview?.open_orders_count ?? 0)}</strong></div>
-              <div><span>持仓数</span><strong>{String(overview?.open_positions_count ?? 0)}</strong></div>
+            <div className="risk-metrics-grid">
+              <div className="risk-metric-card">
+                <span>Perp 可用</span>
+                <strong>{formatMoney(overview?.perp_available_balance ?? overview?.available_balance)}</strong>
+              </div>
+              <div className="risk-metric-card">
+                <span>Perp 保证金</span>
+                <strong>{formatMoney(overview?.perp_margin_used ?? overview?.margin_used)}</strong>
+              </div>
+              <div className="risk-metric-card">
+                <span>挂单数</span>
+                <strong>{String(overview?.open_orders_count ?? 0)}</strong>
+              </div>
+              <div className="risk-metric-card">
+                <span>持仓数</span>
+                <strong>{String(overview?.open_positions_count ?? 0)}</strong>
+              </div>
             </div>
           </InfoCard>
         </div>
@@ -294,7 +340,10 @@ export default function DashboardPage() {
                       <span>{formatTs(alert.created_at)}</span>
                     </div>
                     <p>{alert.message || '—'}</p>
-                    {alert.symbol && <div className="dashboard-alert-symbol">标的：{alert.symbol}</div>}
+                    <div className="dashboard-alert-footer">
+                      {alert.symbol && <div className="dashboard-alert-symbol">标的：{alert.symbol}</div>}
+                      <span className={`alert-level-badge level-${alert.level || 'info'} ${isRecovery ? 'level-recovery' : ''}`}>{isRecovery ? 'RECOVERY' : (alert.level || 'info').toUpperCase()}</span>
+                    </div>
                   </article>
                 );
               })}
