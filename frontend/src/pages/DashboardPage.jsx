@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import { useDashboardData } from '../lib/data.js';
 
@@ -207,6 +208,25 @@ function CockpitSummary({ overview, runtimeStatus, runtimeTone, positionsCount, 
   );
 }
 
+function CollapsibleSection({ title, badge, defaultOpen = true, children, className = '' }) {
+  const [open, setOpen] = useState(defaultOpen);
+
+  return (
+    <section className={`dashboard-panel dashboard-panel-full collapsible-panel ${className} ${open ? 'open' : 'collapsed'}`}>
+      <div className="panel-header panel-header-clickable" onClick={() => setOpen((v) => !v)}>
+        <div className="panel-header-main">
+          <h3>{title}</h3>
+          {badge ? <span className="panel-badge">{badge}</span> : null}
+        </div>
+        <button type="button" className="collapse-btn" aria-expanded={open}>
+          {open ? '收起' : '展开'}
+        </button>
+      </div>
+      {open ? <div className="collapsible-body">{children}</div> : null}
+    </section>
+  );
+}
+
 export default function DashboardPage() {
   const { data, loading, error } = useDashboardData();
 
@@ -382,11 +402,7 @@ export default function DashboardPage() {
           </div>
         </div>
 
-        <section className="dashboard-panel dashboard-panel-full dashboard-glossary-panel">
-          <div className="panel-header">
-            <h3>诊断提示</h3>
-            <span className="panel-badge">快速说明</span>
-          </div>
+        <CollapsibleSection title="诊断提示" badge="快速说明" defaultOpen={false} className="dashboard-glossary-panel">
           <div className="dashboard-status-list dashboard-status-list-refined">
             <div><span>regime</span><strong>趋势环境是否匹配</strong></div>
             <div><span>rsi</span><strong>RSI 强弱条件是否达标</strong></div>
@@ -394,13 +410,9 @@ export default function DashboardPage() {
             <div><span>stabilizing</span><strong>价格是否出现企稳 / 反转确认</strong></div>
           </div>
           <div className="glossary-note">当前实盘为 short_only，因此这里只展示实盘做空诊断。缺失项越多，代表离做空入场条件越远；这不是报错，而是策略还没等到入场 setup。</div>
-        </section>
+        </CollapsibleSection>
 
-        <section className="dashboard-panel dashboard-panel-full diagnostic-panel">
-          <div className="panel-header">
-            <h3>信号诊断</h3>
-            <span className="panel-badge">{diagnostics.length} 个标的</span>
-          </div>
+        <CollapsibleSection title="信号诊断" badge={`${diagnostics.length} 个标的`} defaultOpen={true} className="diagnostic-panel">
           {diagnostics.length ? (
             <div className="diagnostic-list">
               {diagnostics.map((item) => (
@@ -410,7 +422,7 @@ export default function DashboardPage() {
           ) : (
             <div className="empty-state">暂无诊断数据</div>
           )}
-        </section>
+        </CollapsibleSection>
       </section>
 
       <section className="dashboard-section">
@@ -420,11 +432,7 @@ export default function DashboardPage() {
             <h3>最近告警</h3>
           </div>
         </div>
-        <section className="dashboard-panel dashboard-panel-full">
-          <div className="panel-header">
-            <h3>最近告警</h3>
-            <span className="panel-badge">{latestAlerts.length} 条</span>
-          </div>
+        <CollapsibleSection title="最近告警" badge={`${latestAlerts.length} 条`} defaultOpen={false}>
           {latestAlerts.length ? (
             <div className="dashboard-alert-list dashboard-alert-list-refined">
               {latestAlerts.map((alert) => {
@@ -447,7 +455,7 @@ export default function DashboardPage() {
           ) : (
             <div className="empty-state">暂无告警</div>
           )}
-        </section>
+        </CollapsibleSection>
       </section>
     </Layout>
   );

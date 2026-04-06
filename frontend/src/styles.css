@@ -361,6 +361,16 @@ footer {
   gap: 12px;
   margin-bottom: 14px;
 }
+.panel-header-clickable {
+  cursor: pointer;
+  user-select: none;
+}
+.panel-header-main {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
 .panel-header h3 { margin: 0; }
 .panel-badge {
   border: 1px solid var(--border);
@@ -368,6 +378,25 @@ footer {
   padding: 4px 10px;
   font-size: 0.78rem;
   color: var(--text-secondary);
+}
+.collapse-btn {
+  border: 1px solid rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.03);
+  color: var(--text-secondary);
+  border-radius: 999px;
+  padding: 6px 12px;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.collapse-btn:hover {
+  color: var(--text-primary);
+  border-color: rgba(0,255,159,0.25);
+}
+.collapsible-panel.collapsed {
+  background: linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));
+}
+.collapsible-body {
+  margin-top: 10px;
 }
 .panel-badge.ok {
   color: var(--accent);
