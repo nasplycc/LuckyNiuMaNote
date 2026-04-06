@@ -371,17 +371,14 @@ export default function TradesPage() {
 
   return (
     <Layout>
-      <section className="dashboard-hero">
-        <div>
-          <div className="dashboard-kicker">LuckyNiuMa Trades</div>
-          <h2 className="dashboard-title">交易记录</h2>
-          <p className="dashboard-subtitle">
-            查看机器人历史开仓、平仓记录。页面数据来自 <code>/data-export/trades.json</code>。
-          </p>
+      <section className="trades-page-meta-bar">
+        <div className="trades-page-meta-item">
+          <span>记录数</span>
+          <strong>{filteredTrades.length}</strong>
         </div>
-        <div className="dashboard-hero-meta">
-          <div><span>记录数</span><strong>{filteredTrades.length}</strong></div>
-          <div><span>更新时间</span><strong>{formatTs(data?.updated_at)}</strong></div>
+        <div className="trades-page-meta-item">
+          <span>更新时间</span>
+          <strong>{formatTs(data?.updated_at)}</strong>
         </div>
       </section>
 

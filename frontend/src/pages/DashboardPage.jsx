@@ -343,21 +343,6 @@ export default function DashboardPage() {
 
   return (
     <Layout>
-      <AlertBanner
-        botStatus={botStatus}
-        latestAlerts={latestAlerts}
-        recoveryAlert={recoveryAlert}
-      />
-
-      <ExecutiveSummary
-        overview={overview}
-        botStatus={botStatus}
-        runtimeStatus={runtimeStatus}
-        positionsCount={positions?.positions?.length || 0}
-        latestAlerts={latestAlerts}
-        recoveryAlert={recoveryAlert}
-      />
-
       <CockpitSummary
         overview={overview}
         positionsCount={positions?.positions?.length || 0}
@@ -474,6 +459,30 @@ export default function DashboardPage() {
             )}
           </InfoCard>
         </div>
+      </section>
+
+      <section className="dashboard-section dashboard-section-secondary">
+        <div className="section-heading">
+          <div>
+            <div className="section-kicker">辅助信息</div>
+            <h3>状态摘要与提醒</h3>
+          </div>
+        </div>
+
+        <AlertBanner
+          botStatus={botStatus}
+          latestAlerts={latestAlerts}
+          recoveryAlert={recoveryAlert}
+        />
+
+        <ExecutiveSummary
+          overview={overview}
+          botStatus={botStatus}
+          runtimeStatus={runtimeStatus}
+          positionsCount={positions?.positions?.length || 0}
+          latestAlerts={latestAlerts}
+          recoveryAlert={recoveryAlert}
+        />
       </section>
 
       <section className="dashboard-section dashboard-section-secondary">
