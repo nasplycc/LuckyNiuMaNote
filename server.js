@@ -80,7 +80,7 @@ app.use('/data-export', express.static(path.join(__dirname, 'data-export')));
 app.use(express.static(DIST_DIR));
 
 // 所有路由返回React应用的index.html (SPA支持)
-app.get(['/', '/dashboard', '/strategy', '/learn', '/chart', '/entry/:slug'], (req, res) => {
+app.get(['/', '/dashboard', '/trades', '/strategy', '/learn', '/chart', '/entry/:slug'], (req, res) => {
   try {
     const html = fs.readFileSync(DIST_INDEX, 'utf8');
     res.type('html').send(html);

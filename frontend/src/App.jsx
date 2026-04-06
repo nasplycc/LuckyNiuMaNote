@@ -5,6 +5,7 @@ import LearnPage from './pages/LearnPage.jsx';
 import StrategyPage from './pages/StrategyPage.jsx';
 import ChartPage from './pages/ChartPage.jsx';
 import DashboardPage from './pages/DashboardPage.jsx';
+import TradesPage from './pages/TradesPage.jsx';
 import { useSiteData } from './lib/data.js';
 
 function App() {
@@ -22,6 +23,7 @@ function App() {
     <Routes>
       <Route path="/" element={<DashboardPage />} />
       <Route path="/dashboard" element={<DashboardPage />} />
+      <Route path="/trades" element={<TradesPage />} />
       <Route path="/entry/:slug" element={<EntryPage data={data} />} />
       <Route path="/strategy" element={<StrategyPage data={data} />} />
       <Route path="/learn" element={<LearnPage data={data} />} />
