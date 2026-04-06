@@ -261,6 +261,45 @@ function CollapsibleSection({ title, badge, defaultOpen = true, children, classN
   );
 }
 
+function AlertBanner({ botStatus, latestAlerts, recoveryAlert }) {
+  const blockingAlert = latestAlerts.find((item) => item?.title !== 'safe_mode_exit');
+  const hasCritical = Boolean(botStatus?.safe_mode || botStatus?.monitor_only || !botStatus?.sqlite_ok || blockingAlert);
+
+  if (!hasCritical && !recoveryAlert) {
+    return (
+      <section className="alert-banner healthy">
+        <div className="alert-banner-kicker">状态横幅</div>
+        <div className="alert-banner-title">当前无高优先级异常，系统处于相对安静状态</div>
+        <div className="alert-banner-text">首页默认以执行与风险概览为主，详细诊断与事件放在下层按需查看。</div>
+      </section>
+    );
+  }
+
+  return (
+    <section className={`alert-banner ${hasCritical ? 'danger' : 'healthy'}`}>
+      <div>
+        <div className="alert-banner-kicker">异常优先</div>
+        <div className="alert-banner-title">
+          {botStatus?.safe_mode
+            ? 'SAFE_MODE 正在生效，需要优先处理'
+            : botStatus?.monitor_only
+              ? '当前为 MONITOR_ONLY，尚未进入正常实盘执行'
+              : !botStatus?.sqlite_ok
+                ? 'SQLITE 状态异常，需优先核查运行链路'
+                : `${blockingAlert?.title || '存在需关注事件'} 需要优先查看`}
+        </div>
+        <div className="alert-banner-text">
+          {blockingAlert?.message || recoveryAlert?.message || '请先查看首页第一视图中的系统状态与风控信息。'}
+        </div>
+      </div>
+      <div className="alert-banner-side">
+        <div className="alert-banner-chip">{botStatus?.safe_mode ? 'SAFE_MODE' : botStatus?.monitor_only ? 'MONITOR_ONLY' : !botStatus?.sqlite_ok ? 'SQLITE_FAIL' : (blockingAlert?.level || 'ALERT').toUpperCase()}</div>
+        <div className="alert-banner-time">{blockingAlert?.created_at || recoveryAlert?.created_at ? formatTs(blockingAlert?.created_at || recoveryAlert?.created_at) : '实时'}</div>
+      </div>
+    </section>
+  );
+}
+
 function CompactHero({ meta, overview, botStatus, runtimeStatus, runtimeTone, positionsCount }) {
   return (
     <section className="compact-hero">
@@ -305,6 +344,12 @@ export default function DashboardPage() {
 
   return (
     <Layout>
+      <AlertBanner
+        botStatus={botStatus}
+        latestAlerts={latestAlerts}
+        recoveryAlert={recoveryAlert}
+      />
+
       <ExecutiveSummary
         overview={overview}
         botStatus={botStatus}
