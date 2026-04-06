@@ -64,16 +64,11 @@ export default function TradesPage() {
   const [rangeFilter, setRangeFilter] = useState('ALL');
   const [expandedTradeKey, setExpandedTradeKey] = useState(null);
 
-  if (loading) {
-    return <div className="loading-screen">交易记录加载中...</div>;
-  }
-
-  if (error || !data) {
-    return <div className="loading-screen error">交易记录加载失败</div>;
-  }
-
   const trades = data?.trades || [];
-  const symbolOptions = ['ALL', ...Array.from(new Set(trades.map((trade) => trade?.symbol || trade?.coin).filter(Boolean)))];
+  const symbolOptions = useMemo(
+    () => ['ALL', ...Array.from(new Set(trades.map((trade) => trade?.symbol || trade?.coin).filter(Boolean)))],
+    [trades]
+  );
 
   const normalizedTrades = useMemo(() => trades.map((trade, idx) => {
     const action = inferAction(trade);
@@ -104,12 +99,12 @@ export default function TradesPage() {
     };
   }), [trades]);
 
-  const filteredTrades = normalizedTrades.filter((trade) => {
+  const filteredTrades = useMemo(() => normalizedTrades.filter((trade) => {
     if (symbolFilter !== 'ALL' && trade.symbol !== symbolFilter) return false;
     if (actionFilter !== 'ALL' && trade.action !== actionFilter) return false;
     if (!isWithinRange(trade.ts, rangeFilter)) return false;
     return true;
-  });
+  }), [normalizedTrades, symbolFilter, actionFilter, rangeFilter]);
 
   const totalNotional = filteredTrades.reduce((sum, trade) => sum + (Number(trade.notional) || 0), 0);
   const totalPnl = filteredTrades.reduce((sum, trade) => sum + (Number(trade.pnl) || 0), 0);
@@ -139,6 +134,14 @@ export default function TradesPage() {
     });
     return Array.from(map.values()).sort((a, b) => b.notional - a.notional);
   }, [filteredTrades]);
+
+  if (loading) {
+    return <div className="loading-screen">交易记录加载中...</div>;
+  }
+
+  if (error || !data) {
+    return <div className="loading-screen error">交易记录加载失败</div>;
+  }
 
   return (
     <Layout>
