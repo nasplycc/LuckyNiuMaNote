@@ -932,6 +932,61 @@ class NostalgiaForInfinityTrader:
         )
         return any(marker in reason for marker in recoverable_markers)
 
+    def _protection_safe_mode_can_auto_clear(self) -> bool:
+        reason = str(self.guard.state.get("safe_reason") or "").lower()
+        protection_markers = (
+            "protection order placement failed",
+            "protection missing",
+            "protection setup",
+        )
+        return any(marker in reason for marker in protection_markers)
+
+    def _recover_from_protection_safe_mode_if_possible(self) -> bool:
+        if not self.guard.in_safe_mode() or not self._protection_safe_mode_can_auto_clear():
+            return False
+        try:
+            account = self.get_account_state()
+            open_orders = self.get_open_orders()
+        except Exception:
+            return False
+
+        live_positions = []
+        for item in account.get("positions", []):
+            p = item.get("position", {})
+            if float(p.get("szi", 0) or 0) != 0:
+                live_positions.append(p)
+
+        orders_by_coin: Dict[str, List[Dict]] = {}
+        for order in open_orders or []:
+            coin = order.get("coin")
+            if coin:
+                orders_by_coin.setdefault(coin, []).append(order)
+
+        # If there are no live positions, the old protection-failure SAFE_MODE is stale and can be cleared.
+        if not live_positions:
+            self.guard.exit_safe_mode()
+            self.notify("✅ 当前已无实际持仓，已自动清除残留的保护单 SAFE_MODE，恢复正常交易检查。")
+            return True
+
+        # If there are live positions, only clear SAFE_MODE when every live position already has both TP and SL.
+        for p in live_positions:
+            symbol = p.get("coin")
+            symbol_orders = orders_by_coin.get(symbol, [])
+            trigger_orders = [
+                o for o in symbol_orders
+                if str(o.get("orderType", "")).lower().find("trigger") >= 0
+                or o.get("triggerCondition")
+                or str(o.get("origType", "")).lower().find("trigger") >= 0
+            ]
+            has_stop = any(str(o.get("tpsl", "")).lower() == "sl" or str(o.get("orderType", "")).lower().find("sl") >= 0 for o in trigger_orders)
+            has_tp = any(str(o.get("tpsl", "")).lower() == "tp" or str(o.get("orderType", "")).lower().find("tp") >= 0 for o in trigger_orders)
+            if not (has_stop and has_tp):
+                return False
+
+        self.guard.exit_safe_mode()
+        self.notify("✅ 当前持仓保护单已齐全，已自动退出残留 SAFE_MODE，恢复正常交易检查。")
+        return True
+
     def _recover_from_api_safe_mode_if_possible(self) -> bool:
         if not self.guard.in_safe_mode() or not self._safe_mode_can_auto_recover():
             return False
@@ -948,6 +1003,8 @@ class NostalgiaForInfinityTrader:
         if self.guard.in_safe_mode():
             if self._recover_from_api_safe_mode_if_possible():
                 logger.info("SAFE_MODE auto-cleared after API recovery")
+            elif self._recover_from_protection_safe_mode_if_possible():
+                logger.info("SAFE_MODE auto-cleared after protection-state reconciliation")
             else:
                 logger.warning("SAFE_MODE active: %s", self.guard.state.get("safe_reason"))
                 return False
