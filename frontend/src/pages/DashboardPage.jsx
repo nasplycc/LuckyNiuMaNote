@@ -59,46 +59,123 @@ function InfoCard({ title, badge, children, tone = '' }) {
   );
 }
 
-function DiagnosticCard({ item }) {
-  const shortMissing = item?.short_setup?.missing || [];
+function PositionCard({ pos }) {
+  const pnl = Number(pos?.unrealized_pnl || 0);
+  const pnlPct = Number(pos?.unrealized_pnl_pct || 0);
+  const progress = Math.max(0, Math.min(100, Math.abs(pnlPct) * 4));
+  const profitable = pnl >= 0;
 
   return (
-    <article className="diagnostic-card">
-      <div className="diagnostic-top">
+    <article className="dashboard-position-card dashboard-position-card-refined" key={`${pos.symbol}-${pos.side}`}>
+      <div className="dashboard-position-top">
+        <div>
+          <div className="coin">{pos.symbol}</div>
+          <div className="dashboard-position-meta">{pos.margin_mode} · {pos.leverage || 0}x</div>
+        </div>
+        <span className={`side ${pos.side === 'LONG' ? 'long' : 'short'}`}>{pos.side}</span>
+      </div>
+
+      <div className="position-pnl-hero">
+        <div>
+          <div className="position-pnl-label">浮动盈亏</div>
+          <div className={`position-pnl-value ${profitable ? 'profit' : 'loss'}`}>{formatMoney(pnl, 2)}</div>
+        </div>
+        <div className={`position-pnl-rate ${profitable ? 'profit' : 'loss'}`}>{formatPct(pnlPct, 2)}</div>
+      </div>
+
+      <div className="position-progress-track">
+        <div
+          className={`position-progress-fill ${profitable ? 'profit' : 'loss'}`}
+          style={{ width: `${progress}%` }}
+        />
+      </div>
+
+      <div className="position-price-compare">
+        <div className="price-box">
+          <span>开仓价</span>
+          <strong>{formatMoney(pos.entry_price, 2)}</strong>
+        </div>
+        <div className="price-box">
+          <span>标记价</span>
+          <strong>{formatMoney(pos.mark_price, 2)}</strong>
+        </div>
+      </div>
+
+      <div className="dashboard-position-body position-detail-grid">
+        <div><span>仓位</span><strong>{pos.size}</strong></div>
+        <div><span>开仓时间</span><strong>{formatTs(pos.opened_at)}</strong></div>
+      </div>
+    </article>
+  );
+}
+
+function DiagnosticCard({ item }) {
+  const shortMissing = item?.short_setup?.missing || [];
+  const ready = Boolean(item?.short_setup?.ready);
+  const distanceFast = Number(item?.distance_to_short_rsi?.rsi_fast || 0);
+  const distanceMain = Number(item?.distance_to_short_rsi?.rsi_main || 0);
+  const volumeDistance = Number(item?.distance_to_volume_threshold || 0);
+
+  return (
+    <article className="diagnostic-card diagnostic-card-refined">
+      <div className="diagnostic-card-header">
         <div>
           <div className="coin">{item.symbol}</div>
           <div className="diagnostic-sub">{item.timeframe} 策略诊断</div>
         </div>
-        <div className="diagnostic-price">{formatMoney(item.price, 2)}</div>
-      </div>
-
-      <div className="diagnostic-metrics">
-        <div><span>RSI Fast</span><strong>{item.rsi_fast}</strong></div>
-        <div><span>RSI Main</span><strong>{item.rsi_main}</strong></div>
-        <div><span>当前量能</span><strong>{Number(item.volume_now || 0).toFixed(2)}</strong></div>
-        <div><span>量能阈值</span><strong>{Number(item.volume_threshold || 0).toFixed(2)}</strong></div>
-        <div><span>量能/均量</span><strong>{item.volume_ratio_to_sma != null ? `${(Number(item.volume_ratio_to_sma) * 100).toFixed(2)}%` : '暂无'}</strong></div>
-        <div><span>距量能阈值</span><strong className={Number(item.distance_to_volume_threshold || 0) > 0 ? 'loss' : 'profit'}>{formatDistance(item.distance_to_volume_threshold, 2)}</strong></div>
-      </div>
-
-      <div className="diagnostic-grid">
-        <div className="diagnostic-side-card">
-          <div className="diagnostic-side-title">实盘做空诊断</div>
-          <div className={`diagnostic-ready ${item?.short_setup?.ready ? 'ok' : 'bad'}`}>
-            {item?.short_setup?.ready ? '已满足' : '未满足'}
-          </div>
-          <div className="diagnostic-thresholds">
-            <div><span>RSI Fast ≥</span><strong>{item?.thresholds?.short?.rsi_fast_min}</strong></div>
-            <div><span>RSI Main ≥</span><strong>{item?.thresholds?.short?.rsi_main_min}</strong></div>
-            <div><span>当前差值</span><strong className={Number(item?.distance_to_short_rsi?.rsi_fast || 0) > 0 || Number(item?.distance_to_short_rsi?.rsi_main || 0) > 0 ? 'loss' : 'profit'}>{formatDistance(item?.distance_to_short_rsi?.rsi_fast, 2)} / {formatDistance(item?.distance_to_short_rsi?.rsi_main, 2)}</strong></div>
-          </div>
-          <div className="diagnostic-tags">
-            {shortMissing.length ? shortMissing.map((tag) => <span className="diagnostic-tag" key={`short-${item.symbol}-${tag}`}>{tag}</span>) : <span className="diagnostic-tag ok">ready</span>}
-          </div>
+        <div className="diagnostic-header-right">
+          <div className="diagnostic-price">{formatMoney(item.price, 2)}</div>
+          <div className={`diagnostic-ready-pill ${ready ? 'ok' : 'bad'}`}>{ready ? '可入场' : '未满足'}</div>
         </div>
       </div>
 
-      <div className="diagnostic-summary">{item.human_summary || '暂无诊断说明'}</div>
+      <div className="diagnostic-summary-box">
+        <div className="diagnostic-summary-title">结论</div>
+        <div className="diagnostic-summary">{item.human_summary || '暂无诊断说明'}</div>
+      </div>
+
+      <div className="diagnostic-focus-grid">
+        <div className="diagnostic-focus-card">
+          <span>RSI Fast 差值</span>
+          <strong className={distanceFast > 0 ? 'loss' : 'profit'}>{formatDistance(distanceFast, 2)}</strong>
+        </div>
+        <div className="diagnostic-focus-card">
+          <span>RSI Main 差值</span>
+          <strong className={distanceMain > 0 ? 'loss' : 'profit'}>{formatDistance(distanceMain, 2)}</strong>
+        </div>
+        <div className="diagnostic-focus-card">
+          <span>量能差值</span>
+          <strong className={volumeDistance > 0 ? 'loss' : 'profit'}>{formatDistance(volumeDistance, 2)}</strong>
+        </div>
+      </div>
+
+      <div className="diagnostic-tags diagnostic-tags-refined">
+        {shortMissing.length ? shortMissing.map((tag) => <span className="diagnostic-tag" key={`short-${item.symbol}-${tag}`}>{tag}</span>) : <span className="diagnostic-tag ok">ready</span>}
+      </div>
+
+      <details className="diagnostic-details">
+        <summary>查看详细指标</summary>
+        <div className="diagnostic-details-grid">
+          <div className="diagnostic-side-card">
+            <div className="diagnostic-side-title">核心指标</div>
+            <div className="diagnostic-metrics">
+              <div><span>RSI Fast</span><strong>{item.rsi_fast}</strong></div>
+              <div><span>RSI Main</span><strong>{item.rsi_main}</strong></div>
+              <div><span>当前量能</span><strong>{Number(item.volume_now || 0).toFixed(2)}</strong></div>
+              <div><span>量能阈值</span><strong>{Number(item.volume_threshold || 0).toFixed(2)}</strong></div>
+              <div><span>量能/均量</span><strong>{item.volume_ratio_to_sma != null ? `${(Number(item.volume_ratio_to_sma) * 100).toFixed(2)}%` : '暂无'}</strong></div>
+            </div>
+          </div>
+          <div className="diagnostic-side-card">
+            <div className="diagnostic-side-title">做空阈值</div>
+            <div className="diagnostic-thresholds">
+              <div><span>RSI Fast ≥</span><strong>{item?.thresholds?.short?.rsi_fast_min}</strong></div>
+              <div><span>RSI Main ≥</span><strong>{item?.thresholds?.short?.rsi_main_min}</strong></div>
+              <div><span>当前差值</span><strong className={distanceFast > 0 || distanceMain > 0 ? 'loss' : 'profit'}>{formatDistance(distanceFast, 2)} / {formatDistance(distanceMain, 2)}</strong></div>
+            </div>
+          </div>
+        </div>
+      </details>
     </article>
   );
 }
@@ -253,23 +330,7 @@ export default function DashboardPage() {
           {positions?.positions?.length ? (
             <div className="dashboard-position-list dashboard-position-list-refined">
               {positions.positions.map((pos) => (
-                <article className="dashboard-position-card dashboard-position-card-refined" key={`${pos.symbol}-${pos.side}`}>
-                  <div className="dashboard-position-top">
-                    <div>
-                      <div className="coin">{pos.symbol}</div>
-                      <div className="dashboard-position-meta">{pos.margin_mode} · {pos.leverage || 0}x</div>
-                    </div>
-                    <span className={`side ${pos.side === 'LONG' ? 'long' : 'short'}`}>{pos.side}</span>
-                  </div>
-                  <div className="dashboard-position-body">
-                    <div><span>仓位</span><strong>{pos.size}</strong></div>
-                    <div><span>开仓价</span><strong>{formatMoney(pos.entry_price, 2)}</strong></div>
-                    <div><span>标记价</span><strong>{formatMoney(pos.mark_price, 2)}</strong></div>
-                    <div><span>浮盈亏</span><strong className={pos.unrealized_pnl >= 0 ? 'profit' : 'loss'}>{formatMoney(pos.unrealized_pnl, 2)}</strong></div>
-                    <div><span>盈亏率</span><strong className={pos.unrealized_pnl_pct >= 0 ? 'profit' : 'loss'}>{formatPct(pos.unrealized_pnl_pct, 2)}</strong></div>
-                    <div><span>开仓时间</span><strong>{formatTs(pos.opened_at)}</strong></div>
-                  </div>
-                </article>
+                <PositionCard pos={pos} key={`${pos.symbol}-${pos.side}`} />
               ))}
             </div>
           ) : (
