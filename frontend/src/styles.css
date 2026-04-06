@@ -223,6 +223,32 @@ footer { text-align: center; color: var(--text-muted); border-top: 1px solid var
   margin-top: 16px;
 }
 
+.trades-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.trades-filters label {
+  display: grid;
+  gap: 6px;
+  min-width: 160px;
+}
+
+.trades-filters span {
+  color: var(--text-muted);
+  font-size: 0.8rem;
+}
+
+.trades-filters select {
+  background: var(--bg-secondary);
+  color: var(--text-primary);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
 .trades-table-wrap {
   overflow-x: auto;
 }

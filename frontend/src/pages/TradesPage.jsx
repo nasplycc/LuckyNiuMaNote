@@ -1,3 +1,4 @@
+import { useMemo, useState } from 'react';
 import Layout from '../components/Layout.jsx';
 import { useTradesData } from '../lib/data.js';
 
@@ -38,6 +39,8 @@ function inferAction(trade) {
 
 export default function TradesPage() {
   const { data, loading, error } = useTradesData();
+  const [symbolFilter, setSymbolFilter] = useState('ALL');
+  const [actionFilter, setActionFilter] = useState('ALL');
 
   if (loading) {
     return <div className="loading-screen">交易记录加载中...</div>;
@@ -48,6 +51,41 @@ export default function TradesPage() {
   }
 
   const trades = data?.trades || [];
+  const symbolOptions = ['ALL', ...Array.from(new Set(trades.map((trade) => trade?.symbol || trade?.coin).filter(Boolean)))];
+
+  const normalizedTrades = useMemo(() => trades.map((trade, idx) => {
+    const action = inferAction(trade);
+    const side = inferSide(trade);
+    const symbol = trade?.symbol || trade?.coin || '—';
+    const size = trade?.size ?? trade?.sz ?? trade?.qty;
+    const price = trade?.price ?? trade?.avg_px ?? trade?.avgPx ?? trade?.entry_price ?? trade?.exit_price;
+    const notional = trade?.notional ?? trade?.value ?? (Number(size) && Number(price) ? Number(size) * Number(price) : null);
+    const pnl = trade?.realized_pnl ?? trade?.pnl ?? trade?.closed_pnl;
+    const ts = trade?.timestamp || trade?.executed_at || trade?.created_at || trade?.time || trade?.closed_at || trade?.opened_at;
+    return {
+      raw: trade,
+      idx,
+      action,
+      side,
+      symbol,
+      size,
+      price,
+      notional,
+      pnl,
+      ts,
+    };
+  }), [trades]);
+
+  const filteredTrades = normalizedTrades.filter((trade) => {
+    if (symbolFilter !== 'ALL' && trade.symbol !== symbolFilter) return false;
+    if (actionFilter !== 'ALL' && trade.action !== actionFilter) return false;
+    return true;
+  });
+
+  const totalNotional = filteredTrades.reduce((sum, trade) => sum + (Number(trade.notional) || 0), 0);
+  const totalPnl = filteredTrades.reduce((sum, trade) => sum + (Number(trade.pnl) || 0), 0);
+  const openCount = filteredTrades.filter((trade) => trade.action === '开仓').length;
+  const closeCount = filteredTrades.filter((trade) => trade.action === '平仓').length;
 
   return (
     <Layout>
@@ -60,18 +98,43 @@ export default function TradesPage() {
           </p>
         </div>
         <div className="dashboard-hero-meta">
-          <div><span>记录数</span><strong>{trades.length}</strong></div>
+          <div><span>记录数</span><strong>{filteredTrades.length}</strong></div>
           <div><span>更新时间</span><strong>{formatTs(data?.updated_at)}</strong></div>
         </div>
       </section>
 
+      <div className="stats">
+        <div className="stat-card"><div className="stat-label">总记录</div><div className="stat-value">{filteredTrades.length}</div></div>
+        <div className="stat-card"><div className="stat-label">开仓次数</div><div className="stat-value blue">{openCount}</div></div>
+        <div className="stat-card"><div className="stat-label">平仓次数</div><div className="stat-value green">{closeCount}</div></div>
+        <div className="stat-card"><div className="stat-label">累计成交额</div><div className="stat-value">{formatMoney(totalNotional, 2)}</div></div>
+        <div className="stat-card"><div className="stat-label">累计已实现盈亏</div><div className={`stat-value ${totalPnl >= 0 ? 'green' : 'red'}`}>{formatMoney(totalPnl, 2)}</div></div>
+      </div>
+
       <section className="dashboard-panel trades-panel">
         <div className="panel-header">
           <h3>开仓 / 平仓明细</h3>
-          <span className="panel-badge">{trades.length} 条</span>
+          <span className="panel-badge">{filteredTrades.length} 条</span>
         </div>
 
-        {trades.length ? (
+        <div className="trades-filters">
+          <label>
+            <span>标的</span>
+            <select value={symbolFilter} onChange={(e) => setSymbolFilter(e.target.value)}>
+              {symbolOptions.map((symbol) => <option value={symbol} key={symbol}>{symbol === 'ALL' ? '全部' : symbol}</option>)}
+            </select>
+          </label>
+          <label>
+            <span>动作</span>
+            <select value={actionFilter} onChange={(e) => setActionFilter(e.target.value)}>
+              <option value="ALL">全部</option>
+              <option value="开仓">开仓</option>
+              <option value="平仓">平仓</option>
+            </select>
+          </label>
+        </div>
+
+        {filteredTrades.length ? (
           <div className="trades-table-wrap">
             <table className="trades-table">
               <thead>
@@ -87,35 +150,25 @@ export default function TradesPage() {
                 </tr>
               </thead>
               <tbody>
-                {trades.map((trade, idx) => {
-                  const action = inferAction(trade);
-                  const side = inferSide(trade);
-                  const symbol = trade?.symbol || trade?.coin || '—';
-                  const size = trade?.size ?? trade?.sz ?? trade?.qty;
-                  const price = trade?.price ?? trade?.avg_px ?? trade?.avgPx ?? trade?.entry_price ?? trade?.exit_price;
-                  const notional = trade?.notional ?? trade?.value ?? (Number(size) && Number(price) ? Number(size) * Number(price) : null);
-                  const pnl = trade?.realized_pnl ?? trade?.pnl ?? trade?.closed_pnl;
-                  const ts = trade?.timestamp || trade?.created_at || trade?.time || trade?.closed_at || trade?.opened_at;
-                  return (
-                    <tr key={`${symbol}-${ts || idx}-${idx}`}>
-                      <td>{formatTs(ts)}</td>
-                      <td className="coin">{symbol}</td>
-                      <td>
-                        <span className={`trade-chip ${action === '开仓' ? 'open' : 'close'}`}>{action}</span>
-                      </td>
-                      <td>{side}</td>
-                      <td>{formatNum(size, 6)}</td>
-                      <td>{formatMoney(price, 4)}</td>
-                      <td>{formatMoney(notional, 2)}</td>
-                      <td className={Number(pnl) >= 0 ? 'profit' : 'loss'}>{pnl == null ? '—' : formatMoney(pnl, 2)}</td>
-                    </tr>
-                  );
-                })}
+                {filteredTrades.map((trade) => (
+                  <tr key={`${trade.symbol}-${trade.ts || trade.idx}-${trade.idx}`}>
+                    <td>{formatTs(trade.ts)}</td>
+                    <td className="coin">{trade.symbol}</td>
+                    <td>
+                      <span className={`trade-chip ${trade.action === '开仓' ? 'open' : 'close'}`}>{trade.action}</span>
+                    </td>
+                    <td>{trade.side}</td>
+                    <td>{formatNum(trade.size, 6)}</td>
+                    <td>{formatMoney(trade.price, 4)}</td>
+                    <td>{formatMoney(trade.notional, 2)}</td>
+                    <td className={Number(trade.pnl) >= 0 ? 'profit' : 'loss'}>{trade.pnl == null ? '—' : formatMoney(trade.pnl, 2)}</td>
+                  </tr>
+                ))}
               </tbody>
             </table>
           </div>
         ) : (
-          <div className="empty-state">当前还没有可展示的开仓 / 平仓记录</div>
+          <div className="empty-state">当前筛选条件下没有可展示的交易记录</div>
         )}
       </section>
     </Layout>
