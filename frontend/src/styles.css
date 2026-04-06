@@ -978,6 +978,33 @@ footer {
   padding: 12px 14px;
   margin-bottom: 14px;
 }
+
+.trade-alert-banner-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 6px;
+}
+
+.trades-page-meta-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  white-space: nowrap;
+}
+
+.trades-page-meta-inline span {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.03);
+}
 .trade-alert-banner.healthy {
   border-color: rgba(0,255,159,0.22);
   background: linear-gradient(180deg, rgba(0,255,159,0.06), rgba(255,255,255,0.015));
@@ -1622,6 +1649,8 @@ footer {
   .replay-card-top,
   .replay-quality-row,
   .trades-page-meta-bar,
+  .trade-alert-banner-head,
+  .trades-page-meta-inline,
   .alert-banner,
   .executive-summary-item,
   .compact-hero-meta div {

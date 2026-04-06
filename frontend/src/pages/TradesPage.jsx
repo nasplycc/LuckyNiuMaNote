@@ -409,20 +409,17 @@ export default function TradesPage() {
 
   return (
     <Layout>
-      <section className="trades-page-meta-bar">
-        <div className="trades-page-meta-item">
-          <span>记录数</span>
-          <strong>{filteredTrades.length}</strong>
-        </div>
-        <div className="trades-page-meta-item">
-          <span>更新时间</span>
-          <strong>{formatTs(data?.updated_at)}</strong>
-        </div>
-      </section>
-
       <section className={`trade-alert-banner ${deteriorationBanner.tone}`}>
-        <div className="trade-alert-banner-kicker">近期诊断</div>
-        <div className="trade-alert-banner-title">{deteriorationBanner.title}</div>
+        <div className="trade-alert-banner-head">
+          <div>
+            <div className="trade-alert-banner-kicker">近期诊断</div>
+            <div className="trade-alert-banner-title">{deteriorationBanner.title}</div>
+          </div>
+          <div className="trades-page-meta-inline">
+            <span>记录数 {filteredTrades.length}</span>
+            <span>更新 {formatTs(data?.updated_at)}</span>
+          </div>
+        </div>
         <div className="trade-alert-banner-body">{deteriorationBanner.body}</div>
       </section>
 
