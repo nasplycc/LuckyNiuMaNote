@@ -21,6 +21,16 @@ function formatMoney(value, digits = 2) {
   return `$${num.toFixed(digits)}`;
 }
 
+function formatDurationMs(value) {
+  const ms = Number(value);
+  if (!Number.isFinite(ms) || ms <= 0) return '—';
+  const totalMin = Math.round(ms / 60000);
+  if (totalMin < 60) return `${totalMin} 分钟`;
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return m ? `${h}小时 ${m}分钟` : `${h}小时`;
+}
+
 function inferSide(trade) {
   const side = String(trade?.side || trade?.direction || '').toUpperCase();
   if (side) return side;
@@ -123,6 +133,58 @@ export default function TradesPage() {
     .filter((trade) => Number.isFinite(Number(trade.fee)))
     .sort((a, b) => (Number(b.fee) || 0) - (Number(a.fee) || 0))[0] || null;
 
+  const closedTrades = useMemo(
+    () => filteredTrades.filter((trade) => trade.action === '平仓' && Number.isFinite(Number(trade.pnl))),
+    [filteredTrades]
+  );
+  const winCount = closedTrades.filter((trade) => Number(trade.pnl) > 0).length;
+  const lossCount = closedTrades.filter((trade) => Number(trade.pnl) < 0).length;
+  const winRate = closedTrades.length ? (winCount / closedTrades.length) * 100 : 0;
+  const avgWin = winCount
+    ? closedTrades.filter((trade) => Number(trade.pnl) > 0).reduce((sum, trade) => sum + Number(trade.pnl), 0) / winCount
+    : 0;
+  const avgLossAbs = lossCount
+    ? Math.abs(closedTrades.filter((trade) => Number(trade.pnl) < 0).reduce((sum, trade) => sum + Number(trade.pnl), 0) / lossCount)
+    : 0;
+  const payoffRatio = avgLossAbs > 0 ? avgWin / avgLossAbs : null;
+
+  const replayGroups = useMemo(() => {
+    const openQueues = new Map();
+    const groups = [];
+
+    filteredTrades
+      .slice()
+      .sort((a, b) => new Date(a.ts || 0).getTime() - new Date(b.ts || 0).getTime())
+      .forEach((trade) => {
+        const queueKey = `${trade.symbol}::${trade.positionSide}`;
+        if (trade.action === '开仓') {
+          const queue = openQueues.get(queueKey) || [];
+          queue.push(trade);
+          openQueues.set(queueKey, queue);
+          return;
+        }
+        if (trade.action === '平仓') {
+          const queue = openQueues.get(queueKey) || [];
+          const openTrade = queue.shift();
+          if (openTrade) {
+            groups.push({
+              key: `${openTrade.key}=>${trade.key}`,
+              symbol: trade.symbol,
+              positionSide: trade.positionSide,
+              openTrade,
+              closeTrade: trade,
+              durationMs: new Date(trade.ts || 0).getTime() - new Date(openTrade.ts || 0).getTime(),
+              pnl: Number(trade.pnl) || 0,
+              fee: (Number(openTrade.fee) || 0) + (Number(trade.fee) || 0),
+            });
+          }
+          openQueues.set(queueKey, queue);
+        }
+      });
+
+    return groups.sort((a, b) => new Date(b.closeTrade.ts || 0).getTime() - new Date(a.closeTrade.ts || 0).getTime());
+  }, [filteredTrades]);
+
   const symbolSummaries = useMemo(() => {
     const map = new Map();
     filteredTrades.forEach((trade) => {
@@ -199,9 +261,66 @@ export default function TradesPage() {
 
       <section className="dashboard-panel trades-panel">
         <div className="panel-header">
-          <h3>按标的汇总</h3>
-          <span className="panel-badge">{symbolSummaries.length} 个标的</span>
+          <h3>已平仓绩效</h3>
+          <span className="panel-badge">{closedTrades.length} 笔已闭环</span>
         </div>
+        <div className="performance-grid">
+          <div className="performance-card">
+            <span>胜率</span>
+            <strong>{closedTrades.length ? `${winRate.toFixed(1)}%` : '—'}</strong>
+            <small>{winCount} 胜 / {lossCount} 负</small>
+          </div>
+          <div className="performance-card">
+            <span>平均盈利</span>
+            <strong className="profit">{closedTrades.length ? formatMoney(avgWin, 2) : '—'}</strong>
+            <small>仅统计盈利平仓</small>
+          </div>
+          <div className="performance-card">
+            <span>平均亏损</span>
+            <strong className="loss">{closedTrades.length ? formatMoney(avgLossAbs, 2) : '—'}</strong>
+            <small>仅统计亏损平仓</small>
+          </div>
+          <div className="performance-card">
+            <span>盈亏比</span>
+            <strong>{payoffRatio != null ? payoffRatio.toFixed(2) : '—'}</strong>
+            <small>平均盈利 / 平均亏损</small>
+          </div>
+        </div>
+      </section>
+
+      <section className="dashboard-panel trades-panel">
+        <div className="panel-header">
+          <h3>闭环交易回放</h3>
+          <span className="panel-badge">{replayGroups.length} 组</span>
+        </div>
+        {replayGroups.length ? (
+          <div className="replay-grid">
+            {replayGroups.map((group) => (
+              <article className="replay-card" key={group.key}>
+                <div className="replay-card-top">
+                  <div className="trade-timeline-title-row">
+                    <span className="coin">{group.symbol}</span>
+                    <span className={`position-chip ${group.positionSide === 'LONG' ? 'long' : group.positionSide === 'SHORT' ? 'short' : ''}`}>{group.positionSide}</span>
+                  </div>
+                  <strong className={group.pnl >= 0 ? 'profit' : 'loss'}>{formatMoney(group.pnl, 2)}</strong>
+                </div>
+                <div className="replay-card-body">
+                  <div><span>开仓</span><strong>{formatTs(group.openTrade.ts)}</strong></div>
+                  <div><span>平仓</span><strong>{formatTs(group.closeTrade.ts)}</strong></div>
+                  <div><span>持有时长</span><strong>{formatDurationMs(group.durationMs)}</strong></div>
+                  <div><span>开仓价</span><strong>{formatMoney(group.openTrade.price, 4)}</strong></div>
+                  <div><span>平仓价</span><strong>{formatMoney(group.closeTrade.price, 4)}</strong></div>
+                  <div><span>合计手续费</span><strong>{formatMoney(group.fee, 4)}</strong></div>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : (
+          <div className="empty-state">当前筛选条件下暂时无法组成完整开平仓闭环</div>
+        )}
+      </section>
+
+      <section className="dashboard-panel trades-panel">
         {symbolSummaries.length ? (
           <div className="symbol-summary-grid">
             {symbolSummaries.map((item) => (
