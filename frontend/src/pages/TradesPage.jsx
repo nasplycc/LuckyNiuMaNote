@@ -115,6 +115,14 @@ export default function TradesPage() {
   const openCount = filteredTrades.filter((trade) => trade.action === '开仓').length;
   const closeCount = filteredTrades.filter((trade) => trade.action === '平仓').length;
 
+  const latestTrade = filteredTrades[0] || null;
+  const topWinningTrade = [...filteredTrades]
+    .filter((trade) => Number.isFinite(Number(trade.pnl)))
+    .sort((a, b) => (Number(b.pnl) || 0) - (Number(a.pnl) || 0))[0] || null;
+  const topFeeTrade = [...filteredTrades]
+    .filter((trade) => Number.isFinite(Number(trade.fee)))
+    .sort((a, b) => (Number(b.fee) || 0) - (Number(a.fee) || 0))[0] || null;
+
   const symbolSummaries = useMemo(() => {
     const map = new Map();
     filteredTrades.forEach((trade) => {
@@ -162,6 +170,24 @@ export default function TradesPage() {
         </div>
       </section>
 
+      <section className="trades-hero-strip">
+        <div className="trade-spotlight-card emphasis">
+          <span className="trade-spotlight-label">最近成交</span>
+          <strong>{latestTrade ? `${latestTrade.symbol} · ${latestTrade.action}` : '暂无'}</strong>
+          <small>{latestTrade ? `${formatTs(latestTrade.ts)} · ${formatMoney(latestTrade.price, 4)}` : '等待新成交'}</small>
+        </div>
+        <div className="trade-spotlight-card">
+          <span className="trade-spotlight-label">最佳已实现盈亏</span>
+          <strong className={Number(topWinningTrade?.pnl) >= 0 ? 'profit' : 'loss'}>{topWinningTrade ? formatMoney(topWinningTrade.pnl, 2) : '—'}</strong>
+          <small>{topWinningTrade ? `${topWinningTrade.symbol} · ${topWinningTrade.action}` : '暂无可比较记录'}</small>
+        </div>
+        <div className="trade-spotlight-card">
+          <span className="trade-spotlight-label">最高手续费</span>
+          <strong>{topFeeTrade ? formatMoney(topFeeTrade.fee, 4) : '—'}</strong>
+          <small>{topFeeTrade ? `${topFeeTrade.symbol} · ${formatTs(topFeeTrade.ts)}` : '暂无可比较记录'}</small>
+        </div>
+      </section>
+
       <div className="stats">
         <div className="stat-card"><div className="stat-label">总记录</div><div className="stat-value">{filteredTrades.length}</div></div>
         <div className="stat-card"><div className="stat-label">开仓次数</div><div className="stat-value blue">{openCount}</div></div>
@@ -201,8 +227,61 @@ export default function TradesPage() {
 
       <section className="dashboard-panel trades-panel">
         <div className="panel-header">
-          <h3>开仓 / 平仓明细</h3>
+          <h3>交易时间线</h3>
           <span className="panel-badge">{filteredTrades.length} 条</span>
+        </div>
+
+        {filteredTrades.length ? (
+          <div className="trade-timeline">
+            {filteredTrades.map((trade) => {
+              const expanded = expandedTradeKey === trade.key;
+              return (
+                <article className={`trade-timeline-card ${expanded ? 'expanded' : ''}`} key={`card-${trade.key}`} onClick={() => setExpandedTradeKey(expanded ? null : trade.key)}>
+                  <div className="trade-timeline-top">
+                    <div>
+                      <div className="trade-timeline-title-row">
+                        <span className="coin">{trade.symbol}</span>
+                        <span className={`trade-chip ${trade.action === '开仓' ? 'open' : 'close'}`}>{trade.action}</span>
+                        <span className={`position-chip ${trade.positionSide === 'LONG' ? 'long' : trade.positionSide === 'SHORT' ? 'short' : ''}`}>{trade.positionSide}</span>
+                      </div>
+                      <div className="trade-timeline-time">{formatTs(trade.ts)}</div>
+                    </div>
+                    <div className={`trade-timeline-pnl ${Number(trade.pnl) >= 0 ? 'profit' : 'loss'}`}>
+                      {trade.pnl == null ? '—' : formatMoney(trade.pnl, 2)}
+                    </div>
+                  </div>
+
+                  <div className="trade-timeline-metrics">
+                    <div><span>方向</span><strong>{trade.side}</strong></div>
+                    <div><span>数量</span><strong>{formatNum(trade.size, 6)}</strong></div>
+                    <div><span>价格</span><strong>{formatMoney(trade.price, 4)}</strong></div>
+                    <div><span>成交额</span><strong>{formatMoney(trade.notional, 2)}</strong></div>
+                    <div><span>手续费</span><strong>{formatMoney(trade.fee, 4)}</strong></div>
+                  </div>
+
+                  {expanded ? (
+                    <div className="trade-timeline-detail-grid">
+                      <div><span>Trade ID</span><strong>{trade.raw?.trade_id || '—'}</strong></div>
+                      <div><span>Hash</span><strong className="hash-text">{trade.raw?.hash || '—'}</strong></div>
+                      <div><span>原始方向</span><strong>{trade.raw?.raw_direction || '—'}</strong></div>
+                      <div><span>起始仓位</span><strong>{trade.raw?.start_position ?? '—'}</strong></div>
+                      <div><span>来源</span><strong>{trade.raw?.source || '—'}</strong></div>
+                      <div><span>策略标签</span><strong>{trade.raw?.strategy_tag || '—'}</strong></div>
+                    </div>
+                  ) : null}
+                </article>
+              );
+            })}
+          </div>
+        ) : (
+          <div className="empty-state">当前筛选条件下没有可展示的交易记录</div>
+        )}
+      </section>
+
+      <section className="dashboard-panel trades-panel">
+        <div className="panel-header">
+          <h3>表格明细</h3>
+          <span className="panel-badge">用于精确核对</span>
         </div>
 
         <div className="trades-filters">

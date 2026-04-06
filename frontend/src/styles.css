@@ -777,6 +777,96 @@ footer {
   word-break: break-all;
 }
 
+.trades-hero-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+.trade-spotlight-card {
+  border-radius: 14px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: linear-gradient(180deg, rgba(255,255,255,0.03), rgba(255,255,255,0.015));
+  padding: 16px;
+  display: grid;
+  gap: 6px;
+}
+.trade-spotlight-card.emphasis {
+  border-color: rgba(0,212,255,0.22);
+  background: linear-gradient(180deg, rgba(0,212,255,0.08), rgba(255,255,255,0.015));
+}
+.trade-spotlight-label {
+  color: var(--text-muted);
+  font-size: 0.76rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.trade-spotlight-card strong {
+  font-size: 1.12rem;
+}
+.trade-spotlight-card small {
+  color: var(--text-secondary);
+}
+.trade-timeline {
+  display: grid;
+  gap: 12px;
+}
+.trade-timeline-card {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 14px;
+  background: rgba(255,255,255,0.02);
+  cursor: pointer;
+}
+.trade-timeline-card.expanded {
+  border-color: rgba(0,212,255,0.22);
+  background: linear-gradient(180deg, rgba(0,212,255,0.04), rgba(255,255,255,0.015));
+}
+.trade-timeline-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  align-items: flex-start;
+}
+.trade-timeline-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.trade-timeline-time {
+  margin-top: 6px;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
+.trade-timeline-pnl {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 1rem;
+  font-weight: 700;
+}
+.trade-timeline-metrics {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.trade-timeline-metrics div,
+.trade-timeline-detail-grid div {
+  display: grid;
+  gap: 4px;
+}
+.trade-timeline-metrics span,
+.trade-timeline-detail-grid span {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+.trade-timeline-detail-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 12px;
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid rgba(255,255,255,0.06);
+}
 .trades-panel {
   margin-top: 16px;
 }
