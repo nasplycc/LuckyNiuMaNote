@@ -1,0 +1,33 @@
+{
+  "updated_at": "2026-04-06T10:56:46+08:00",
+  "trades": [
+    {
+      "trade_id": "position_close_1",
+      "symbol": "BTC",
+      "action": "平仓",
+      "side": "SHORT",
+      "position_side": "SHORT",
+      "price": null,
+      "qty": 0.00319,
+      "fee": 0.0,
+      "realized_pnl": 0.0,
+      "source": "refresh_position_states",
+      "strategy_tag": "NFI",
+      "timestamp": "2026-04-06 01:31:34"
+    },
+    {
+      "trade_id": "371534644326",
+      "symbol": "BTC",
+      "action": "开仓",
+      "side": "SELL",
+      "position_side": "SHORT",
+      "price": 68915.0,
+      "qty": 0.00319,
+      "fee": 0.0,
+      "realized_pnl": 0.0,
+      "source": "bot",
+      "strategy_tag": "NFI",
+      "timestamp": "2026-04-06 01:12:00"
+    }
+  ]
+}

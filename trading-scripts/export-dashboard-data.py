@@ -565,34 +565,92 @@ def build_positions(ctx: ExportContext) -> Dict[str, Any]:
 
 
 def build_trades(ctx: ExportContext) -> Dict[str, Any]:
-    rows = query_rows(
-        "SELECT * FROM orders ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 50"
+    order_rows = query_rows(
+        "SELECT * FROM orders ORDER BY COALESCE(updated_at, created_at) DESC LIMIT 100"
     )
+    position_rows = query_rows(
+        "SELECT * FROM positions ORDER BY COALESCE(closed_at, updated_at, opened_at) DESC LIMIT 100"
+    )
+
     trades: List[Dict[str, Any]] = []
-    for row in rows:
+
+    for row in order_rows:
         payload = safe_json_loads(row.get("payload_json"), {})
         status = str(row.get("status") or "").upper()
-        if status not in {"FILLED", "CLOSED", "EXECUTED"}:
+        payload_status = str(payload.get("status") or "").upper()
+        order_type = str(row.get("order_type") or "").upper()
+        side = str(row.get("side") or "").upper()
+        response = payload.get("response") or {}
+        data = response.get("data") or {}
+        statuses = data.get("statuses") or []
+        filled = None
+        if statuses and isinstance(statuses, list):
+            first = statuses[0] or {}
+            filled = first.get("filled") if isinstance(first, dict) else None
+
+        is_executed = bool(filled) or status in {"FILLED", "CLOSED", "EXECUTED", "OK"} or payload_status in {"FILLED", "CLOSED", "EXECUTED", "OK"}
+        if not is_executed:
             continue
+
+        avg_px = (filled or {}).get("avgPx") if isinstance(filled, dict) else None
+        total_sz = (filled or {}).get("totalSz") if isinstance(filled, dict) else None
+
+        action = "开仓"
+        if order_type in {"TP", "SL", "EXIT", "CLOSE"}:
+            action = "平仓"
+
+        position_side = payload.get("position_side")
+        if not position_side:
+            if side == "BUY":
+                position_side = "LONG"
+            elif side == "SELL":
+                position_side = "SHORT"
+            else:
+                position_side = "UNKNOWN"
+
         trades.append(
             {
                 "trade_id": row.get("order_id") or f"local_{row.get('id')}",
                 "symbol": row.get("symbol"),
-                "side": row.get("side"),
-                "position_side": payload.get("position_side") or "UNKNOWN",
-                "price": safe_float(row.get("price")),
-                "qty": safe_float(row.get("size")),
+                "action": action,
+                "side": side,
+                "position_side": position_side,
+                "price": safe_float(avg_px or row.get("price")),
+                "qty": safe_float(total_sz or row.get("size")),
                 "fee": safe_float(payload.get("fee")),
                 "realized_pnl": safe_float(payload.get("realized_pnl")),
                 "source": payload.get("source", "bot"),
                 "strategy_tag": payload.get("strategy_tag", "NFI"),
-                "executed_at": row.get("updated_at") or row.get("created_at"),
+                "timestamp": row.get("updated_at") or row.get("created_at"),
             }
         )
 
+    for row in position_rows:
+        if str(row.get("status") or "").upper() != "CLOSED":
+            continue
+        meta = safe_json_loads(row.get("meta_json"), {})
+        trades.append(
+            {
+                "trade_id": f"position_close_{row.get('id')}",
+                "symbol": row.get("symbol"),
+                "action": "平仓",
+                "side": row.get("side"),
+                "position_side": row.get("side"),
+                "price": None,
+                "qty": safe_float(row.get("size")),
+                "fee": 0.0,
+                "realized_pnl": safe_float(meta.get("realized_pnl")),
+                "source": meta.get("closed_by", "position_state"),
+                "strategy_tag": meta.get("strategy_tag", "NFI"),
+                "timestamp": row.get("closed_at") or row.get("updated_at"),
+            }
+        )
+
+    trades.sort(key=lambda x: x.get("timestamp") or "", reverse=True)
+
     return {
         "updated_at": ctx.now_iso,
-        "trades": trades[:30],
+        "trades": trades[:50],
     }
 
 
