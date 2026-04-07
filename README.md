@@ -260,7 +260,7 @@ Dashboard 负责：
 
 ---
 
-## 5. 当前系统硬能力与约束
+## 5. 当前系统硬规则与约束
 
 ### 5.1 SAFE_MODE 是核心保护机制
 
@@ -461,7 +461,7 @@ python scripts/auto_trader_nostalgia_for_infinity.py
 
 ---
 
-## 10. 生产运行相关文件
+## 8. 生产运行相关文件
 
 当前仓库中已包含若干基础设施文件：
 
@@ -483,7 +483,7 @@ python scripts/auto_trader_nostalgia_for_infinity.py
 
 ---
 
-## 11. 当前前端页面结构
+## 9. 当前前端页面结构
 
 当前前端为 React SPA，主要页面包括：
 
@@ -511,7 +511,7 @@ python scripts/auto_trader_nostalgia_for_infinity.py
 
 ---
 
-## 12. 关键脚本说明
+## 10. 关键脚本说明
 
 ### `trading-scripts/scripts/auto_trader_nostalgia_for_infinity.py`
 
@@ -569,7 +569,7 @@ Node/Express 服务：
 
 ---
 
-## 13. 适合谁用
+## 11. 适合谁用
 
 这个仓库更适合：
 
@@ -586,7 +586,7 @@ Node/Express 服务：
 
 ---
 
-## 14. 维护建议
+## 12. 维护建议
 
 如果后续继续演进，建议遵守以下原则：
 
@@ -598,7 +598,7 @@ Node/Express 服务：
 
 ---
 
-## 15. 相关文档建议阅读顺序
+## 13. 相关文档建议阅读顺序
 
 如果你是第一次接手这个仓库，推荐按这个顺序读：
 
@@ -615,7 +615,7 @@ Node/Express 服务：
 
 ---
 
-## 16. 免责声明
+## 14. 免责声明
 
 本仓库用于交易执行、状态展示与决策支持。
 
@@ -630,7 +630,7 @@ Node/Express 服务：
 
 ---
 
-## 17. 当前仓库边界
+## 15. 当前仓库边界
 
 本仓库只负责 **Hyperliquid / LuckyNiuMaNote 系统**。
 
