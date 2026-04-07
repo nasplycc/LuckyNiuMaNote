@@ -1,4 +1,32 @@
+import { useEffect, useState } from 'react';
 import { NavLink } from 'react-router-dom';
+
+function BackToTopButton() {
+  const [visible, setVisible] = useState(false);
+
+  useEffect(() => {
+    const onScroll = () => setVisible(window.scrollY > 320);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  const handleClick = () => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  return (
+    <button
+      type="button"
+      className={`back-to-top-btn ${visible ? 'visible' : ''}`}
+      onClick={handleClick}
+      aria-label="返回顶部"
+      title="返回顶部"
+    >
+      ↑
+    </button>
+  );
+}
 
 export default function Layout({ children }) {
   return (
@@ -31,6 +59,7 @@ export default function Layout({ children }) {
         <p>🤖🐴 赛博牛马 × AI Trading Experiment</p>
         <p className="footer-sub">Powered by OpenClaw</p>
       </footer>
+      <BackToTopButton />
     </div>
   );
 }

@@ -1,0 +1,100 @@
+{
+  "updated_at": "2026-04-08T00:45:12+08:00",
+  "strategy_name": "nostalgia_for_infinity",
+  "diagnostics": [
+    {
+      "symbol": "BTC",
+      "timeframe": "1h",
+      "price": 68290.0,
+      "rsi_fast": 51.87,
+      "rsi_main": 44.83,
+      "volume_now": 825.54397,
+      "volume_sma_30": 1397.218147,
+      "volume_threshold": 628.748166,
+      "volume_ratio_to_sma": 0.5908,
+      "thresholds": {
+        "long": {
+          "rsi_fast_max": 23.0,
+          "rsi_main_max": 36.0
+        },
+        "short": {
+          "rsi_fast_min": 75.0,
+          "rsi_main_min": 60.0
+        },
+        "volume_min_ratio_to_sma": 0.45
+      },
+      "distance_to_long_rsi": {
+        "rsi_fast": 28.87,
+        "rsi_main": 8.83
+      },
+      "distance_to_short_rsi": {
+        "rsi_fast": 23.13,
+        "rsi_main": 15.17
+      },
+      "distance_to_volume_threshold": -196.795804,
+      "long_setup": {
+        "ready": false,
+        "missing": [
+          "rsi"
+        ]
+      },
+      "short_setup": {
+        "ready": false,
+        "missing": [
+          "regime",
+          "pullback",
+          "rsi",
+          "stabilizing"
+        ]
+      },
+      "human_summary": "BTC 当前未触发。做多还差: rsi；做空还差: regime,pullback,rsi,stabilizing；当前 RSI=51.9/44.8，量能=825.54，阈值≥628.75。"
+    },
+    {
+      "symbol": "ETH",
+      "timeframe": "1h",
+      "price": 2086.5,
+      "rsi_fast": 52.43,
+      "rsi_main": 43.32,
+      "volume_now": 13687.2904,
+      "volume_sma_30": 20446.748883,
+      "volume_threshold": 7156.362109,
+      "volume_ratio_to_sma": 0.6694,
+      "thresholds": {
+        "long": {
+          "rsi_fast_max": 21.0,
+          "rsi_main_max": 34.0
+        },
+        "short": {
+          "rsi_fast_min": 72.0,
+          "rsi_main_min": 60.0
+        },
+        "volume_min_ratio_to_sma": 0.35
+      },
+      "distance_to_long_rsi": {
+        "rsi_fast": 31.43,
+        "rsi_main": 9.32
+      },
+      "distance_to_short_rsi": {
+        "rsi_fast": 19.57,
+        "rsi_main": 16.68
+      },
+      "distance_to_volume_threshold": -6530.928291,
+      "long_setup": {
+        "ready": false,
+        "missing": [
+          "rsi"
+        ]
+      },
+      "short_setup": {
+        "ready": false,
+        "missing": [
+          "regime",
+          "pullback",
+          "rsi",
+          "stabilizing"
+        ]
+      },
+      "human_summary": "ETH 当前未触发。做多还差: rsi；做空还差: regime,pullback,rsi,stabilizing；当前 RSI=52.4/43.3，量能=13687.29，阈值≥7156.36。"
+    }
+  ]
+}

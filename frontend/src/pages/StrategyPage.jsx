@@ -14,6 +14,13 @@ export default function StrategyPage({ data }) {
   const exitRules = strategyData.exitRules || {};
   const risk = strategyData.riskManagement || {};
   const perf = strategyData.performance || {};
+  const diagnostics = data?.SIGNAL_DIAGNOSTICS?.diagnostics || [];
+  const btcDiag = diagnostics.find((item) => item.symbol === 'BTC');
+  const ethDiag = diagnostics.find((item) => item.symbol === 'ETH');
+  const currentShortRule = btcDiag && ethDiag
+    ? `RSI(4/14) 进入超买区（BTC 当前 ${btcDiag.thresholds.short.rsi_fast_min}/${btcDiag.thresholds.short.rsi_main_min}，ETH 当前 ${ethDiag.thresholds.short.rsi_fast_min}/${ethDiag.thresholds.short.rsi_main_min}）`
+    : null;
+  const shortRules = (entryRules.short || []).map((item) => item.includes('RSI(4/14)') && currentShortRule ? currentShortRule : item);
 
   return (
     <Layout>
@@ -28,6 +35,7 @@ export default function StrategyPage({ data }) {
           <div><span>周期</span><strong>{markets.timeframe || '1h'}</strong></div>
         </div>
         <p className="text-secondary">{strat.description || '当前使用 LuckyNiuMa / NFI 方向的多指标趋势 + 反转过滤策略，优先做风控和等待高质量 setup。'}</p>
+        {currentShortRule ? <p className="text-secondary">当前实盘做空阈值：{currentShortRule.replace('RSI(4/14) 进入超买区（', '').replace('）', '')}</p> : null}
       </div>
 
       <div className="position-card">
@@ -50,7 +58,7 @@ export default function StrategyPage({ data }) {
         </div>
         <div className="wallet-card">
           <h3>📉 做空条件</h3>
-          <FallbackList items={entryRules.short} empty="当前没有单独展示的做空规则" />
+          <FallbackList items={shortRules} empty="当前没有单独展示的做空规则" />
         </div>
       </div>
 
