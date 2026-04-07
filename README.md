@@ -1,167 +1,409 @@
-# LuckyNiuMaNote - Hyperliquid 交易机器人
+# LuckyNiuMaNote
 
-基于 NostalgiaForInfinity 思路改造的 Hyperliquid 自动交易系统，运行于生产环境。
+Hyperliquid 实盘交易系统与只读 Dashboard 仓库。
 
-**当前版本**: `d57f142` (2026-04-07)  
-**仓库**: [`nasplycc/LuckyNiuMaNote`](https://github.com/nasplycc/LuckyNiuMaNote)  
-**实盘状态**: 运行中 · systemd 托管 · Telegram 告警
+这个仓库不是单纯的前端项目，也不是单纯的策略实验目录，而是一套围绕 **Hyperliquid 永续合约交易、实盘风控、运行状态持久化、只读可视化展示** 组织起来的代码集合。
 
----
+当前仓库包含：
 
-## 生产环境概览
+- 实盘交易机器人
+- 多个策略脚本与回测脚本
+- SQLite 状态层
+- SAFE_MODE 风控保护机制
+- Telegram 告警
+- Dashboard 数据导出层
+- React 前端看板
+- Node/Express Web 服务
+- systemd / nginx / 部署相关文件
 
-| 项目 | 状态 |
-|------|------|
-| **交易平台** | [Hyperliquid](https://hyperliquid.xyz)（去中心化衍生品交易所） |
-| **交易标的** | BTC、ETH 永续合约 |
-| **启动时间** | 2026-04-02 |
-| **初始资金** | ~109.80 USDC |
-| **运行方式** | systemd 服务 (`luckyniuma-trader.service`) |
-| **状态存储** | SQLite (`trading-scripts/state/trader_state.db`) |
-| **告警通知** | Telegram Bot |
-| **当前策略** | NFI Short-Only 反转策略（默认做空） |
+项目目标不是“演示一个交易页面”，而是把 **交易执行、运行状态、风控保护、展示层、部署文件** 固化到同一个仓库里，形成可运行、可观察、可恢复的 Hyperliquid 交易系统。
 
 ---
 
-## 核心能力
+## 1. 项目定位
 
-### 生产化安全增强
+当前仓库的定位是：
 
-当前版本已加入以下生产级能力：
+- **Hyperliquid 永续合约交易系统**
+- **实盘运行中的交易机器人仓库**
+- **运行状态与风控中台**
+- **只读 Dashboard 展示层**
 
-- ✅ **SQLite 状态层**：完整记录信号、订单、持仓、系统事件
-- ✅ **SAFE_MODE 保护机制**：连续失败、API 超时、保护单缺失时自动进入安全模式
-- ✅ **API 抖动自动恢复**：502 / RemoteDisconnected / SSL EOF 等 transient 错误自动重试，恢复后自动退出 SAFE_MODE
-- ✅ **Telegram 实时告警**：开仓、平仓、止损、止盈、SAFE_MODE 进入/退出、系统恢复
-- ✅ **启动对账**：启动时校验交易所持仓、本地状态、挂单保护是否一致
-- ✅ **保护单自动修复**：发现仓位存在但 SL/TP 缺失时，自动补挂止损止盈单
-- ✅ **成交确认轮询**：开仓后先确认真实持仓，再继续挂保护单
-- ✅ **仓位关闭本地清理**：检测到交易所无仓位时，自动把本地仓位标记为 CLOSED
-- ✅ **monitor-only 模式**：不填 API 私钥即可只读运行，用于验证和监控
+它强调的是：
 
-### Dashboard 功能
-
-| 页面 | 功能 |
-|------|------|
-| **Dashboard** | 账户总览、当前持仓、SAFE_MODE 状态、系统恢复提示 |
-| **Trades** | 历史交易记录、盈亏统计、回放质量评分、趋势警告 |
-| **Chart** | K 线 + EMA + 信号标记、NFI 实时指标 |
-| **API** | `/api/position`、`/api/traders-status`、`/api/indicators`、`/api/chart/:symbol` |
+1. **交易脚本不是裸跑**，而是带状态层、保护机制、恢复逻辑
+2. **运行状态可观测**，不是只靠日志肉眼看
+3. **Dashboard 是只读展示层**，不直接承担交易执行
+4. **SAFE_MODE 是核心保护机制**，不是装饰字段
+5. **开发仓 = GitHub 仓 = 运行仓**，减少线上线下漂移
 
 ---
 
-## 架构
+## 2. 当前核心能力
 
-```
+### 2.1 实盘交易机器人
+
+当前主实盘脚本：
+
+- `trading-scripts/scripts/auto_trader_nostalgia_for_infinity.py`
+
+该脚本负责：
+
+- 拉取 Hyperliquid 市场数据与账户状态
+- 基于 NFI（NostalgiaForInfinity-inspired）逻辑生成信号
+- 执行开仓 / 平仓 / 保护单管理
+- 监控异常状态并触发 SAFE_MODE
+- 与本地状态层、告警系统联动
+
+### 2.2 SAFE_MODE 保护机制
+
+当前系统已把 SAFE_MODE 固化到运行链路中。触发场景包括但不限于：
+
+- 连续 API 异常
+- 下单后未确认真实持仓
+- 持仓数量异常
+- 止损 / 止盈保护单挂单失败
+- 启动对账失败
+- 持仓保护状态异常
+- 账户回撤达到风险阈值
+
+系统还包含若干自动恢复逻辑，例如：
+
+- API 恢复后自动退出 SAFE_MODE
+- 保护单修复成功后自动退出 SAFE_MODE
+- 检测到无实际持仓时清除残留 SAFE_MODE
+
+### 2.3 SQLite 状态层
+
+当前系统已具备 SQLite 状态持久化能力，核心代码位于：
+
+- `trading-scripts/scripts/state_store.py`
+
+状态层用于：
+
+- 记录信号
+- 记录订单与持仓状态
+- 记录系统事件
+- 记录 SAFE_MODE 相关状态
+- 为 Dashboard 导出层提供统一读取来源
+
+### 2.4 Telegram 告警
+
+当前系统通过：
+
+- `trading-scripts/scripts/notifier.py`
+
+向 Telegram 发送运行告警，例如：
+
+- 开仓 / 平仓
+- SAFE_MODE 进入
+- SAFE_MODE 恢复
+- 启动对账告警
+- API 恢复提示
+- 保护单修复完成提示
+
+### 2.5 Dashboard 只读展示层
+
+当前仓库内的 Dashboard 用于展示：
+
+- 账户总览
+- 当前持仓
+- 历史交易
+- 告警与运行状态
+- SAFE_MODE / 系统恢复状态
+- 策略与诊断信息
+- 图表与指标页
+
+前端技术栈：
+
+- React
+- React Router
+- Vite
+
+Web 服务：
+
+- Node.js
+- Express
+
+### 2.6 Dashboard 数据导出层
+
+当前 Dashboard 不直接读交易脚本内部对象，而是消费导出后的 JSON 数据。
+
+相关脚本：
+
+- `trading-scripts/export-dashboard-data.py`
+- `trading-scripts/generate_realtime_data.py`
+
+导出结果位于：
+
+- `data-export/overview.json`
+- `data-export/positions.json`
+- `data-export/orders.json`
+- `data-export/trades.json`
+- `data-export/performance.json`
+- `data-export/alerts.json`
+- `data-export/bot_status.json`
+- `data-export/signal_diagnostics.json`
+- `data-export/meta.json`
+
+---
+
+## 3. 项目目录说明
+
+```text
 LuckyNiuMaNote/
-├── content/                    # 站点内容（交易日志、策略、学习资料）
-│   ├── config.json             # 站点配置与账户统计
-│   ├── strategy.json           # 当前策略描述
-│   ├── entries/                # 每日交易日志（Markdown）
-│   └── learn/                  # 学习笔记
-├── src/                        # 前端原生 JS/HTML/CSS
-├── public/                     # 静态资源
-├── build.js                    # 内容构建器（content/ → generated-data.js）
-├── server.js                   # Express 服务器（页面路由 + 实时 API）
-└── trading-scripts/
-    ├── scripts/
-    │   ├── auto_trader_nostalgia_for_infinity.py   # 主力自动交易机器人（当前实盘）
-    │   ├── hl_trade.py                             # 手动交易 CLI
-    │   ├── transfer.py                             # 现货/合约资金划转
-    │   ├── market_check.py                         # 价格监控与告警
-    │   ├── trailing_stop.py                        # 移动止损管理
-    │   ├── state_store.py                          # SQLite 状态层
-    │   ├── notifier.py                             # Telegram 告警
-    │   ├── risk_guard.py                           # SAFE_MODE 与失败计数
-    │   ├── reconcile.py                            # 启动对账与保护单检查
-    │   └── ...                                     # 其他策略脚本
-    ├── state/                                      # SQLite 运行状态目录
-    │   └── trader_state.db                         # 当前运行状态数据库
-    ├── backtest_*.py                               # 各策略回测脚本
-    ├── ecosystem.config.json                       # PM2 进程管理配置
-    └── config/
-        ├── .hl_config.sample                       # 钱包配置模板
-        └── .runtime_config.sample.json             # 运行时风险/告警模板
+├── README.md
+├── package.json
+├── package-lock.json
+├── server.js                         # Node/Express Web 服务入口
+├── build.js                          # 内容构建脚本
+├── deploy.sh                         # 部署脚本
+├── daily_report.sh                   # 日报相关脚本
+├── content/                          # 页面内容与策略说明
+│   ├── config.json
+│   └── strategy.json
+├── data-export/                      # Dashboard JSON 导出结果
+├── public/                           # 静态资源
+├── frontend/                         # React Dashboard 前端
+│   ├── package.json
+│   ├── vite.config.js
+│   ├── index.html
+│   ├── src/
+│   └── README.md
+├── infra/                            # systemd / nginx / 部署配置参考
+│   ├── luckyniuma-backend.service
+│   ├── luckyniuma-dashboard-refresh.nas.service
+│   └── nginx-luckyniuma.conf
+├── logs/                             # 运行日志与交易日志
+├── scripts/                          # 其他部署辅助脚本
+├── src/                              # 旧站点/内容侧 JS 代码
+├── trading-scripts/                  # 交易系统主目录
+│   ├── requirements.txt
+│   ├── export-dashboard-data.py
+│   ├── generate_realtime_data.py
+│   ├── realtime_data_cron.sh
+│   ├── run_auto_trader.sh
+│   ├── manage_bots.sh
+│   ├── ecosystem.config.json
+│   ├── state/
+│   │   └── trader_state.db
+│   ├── config/
+│   │   ├── .hl_config.sample
+│   │   └── .runtime_config.sample.json
+│   ├── scripts/
+│   │   ├── auto_trader_nostalgia_for_infinity.py
+│   │   ├── notifier.py
+│   │   ├── risk_guard.py
+│   │   ├── reconcile.py
+│   │   ├── state_store.py
+│   │   ├── hl_trade.py
+│   │   ├── transfer.py
+│   │   ├── trailing_stop.py
+│   │   └── trader_01~06_*.py
+│   ├── backtest_*.py
+│   └── test_*.py
+├── DEPLOY.md
+├── PROJECT_OVERVIEW.md
+└── UPSTREAM_SYNC.md
 ```
 
 ---
 
-## 部署与运行
+## 4. 核心运行逻辑
 
-### 前置要求
+### 4.1 交易主程序 + 状态层 + 导出层 + 前端
 
-- Python 3.12+
-- Node.js 18+
-- Hyperliquid API Wallet（需单独配置权限）
+系统可以理解为四层：
 
-### 1. 克隆与安装
+1. **交易执行层**
+   - `auto_trader_nostalgia_for_infinity.py`
+   - 其他策略脚本
+
+2. **状态与风控层**
+   - `state_store.py`
+   - `risk_guard.py`
+   - `reconcile.py`
+   - SQLite 数据库 `trader_state.db`
+
+3. **导出层**
+   - `export-dashboard-data.py`
+   - `generate_realtime_data.py`
+   - 导出到 `data-export/*.json`
+
+4. **展示层**
+   - `frontend/`
+   - `server.js`
+   - Dashboard 页面与 API
+
+### 4.2 Dashboard 是展示层，不是交易执行层
+
+虽然这个仓库里有前端与 Web 服务，但交易逻辑并不在 React 页面里执行。
+
+Dashboard 负责：
+
+- 展示账户与持仓
+- 展示历史交易与性能
+- 展示 SAFE_MODE / 风控状态
+- 展示图表与策略信息
+
+真正的执行与状态判断发生在 Python 交易脚本与状态层中。
+
+### 4.3 数据导出是中间桥梁
+
+前端消费的是 `data-export/*.json`，不是直接读 SQLite，也不是直接连 Hyperliquid API。
+
+这使得：
+
+- 前端更稳定
+- 展示层和执行层边界清晰
+- 页面结构调整不会直接干扰实盘交易逻辑
+
+---
+
+## 5. 当前系统硬能力与约束
+
+### 5.1 SAFE_MODE 是核心保护机制
+
+SAFE_MODE 不是页面上的一个提示文案，而是运行层真实存在的保护状态。
+
+当系统检测到：
+
+- 交易执行链路异常
+- API 异常持续
+- 持仓与本地状态不一致
+- 保护单缺失或修复失败
+- 账户风险超阈值
+
+系统会进入 SAFE_MODE，阻断继续交易或转入保护流程。
+
+### 5.2 启动对账已固化
+
+当前系统启动时会做对账与状态核验，相关逻辑见：
+
+- `trading-scripts/scripts/reconcile.py`
+
+这一步用于避免：
+
+- 交易所实际持仓和本地状态漂移
+- 保护单状态缺失
+- 重启后误判无仓 / 漏单
+
+### 5.3 保护单自动补挂已固化
+
+当前系统不仅会在开仓后尝试挂保护单，还会：
+
+- 检查止损 / 止盈是否缺失
+- 在条件允许时尝试自动补挂
+- 修复成功后自动清理相关 SAFE_MODE
+
+### 5.4 monitor-only 模式已支持
+
+系统支持 monitor-only 模式，即：
+
+- 不做真实下单
+- 只运行监控、信号、状态记录和告警链路
+
+这适合：
+
+- 新环境验证
+- 新参数观察
+- 部署前健康检查
+
+---
+
+## 6. Dashboard 数据流
+
+当前数据流大致如下：
+
+```text
+Hyperliquid API / 账户状态 / 行情
+        │
+        ▼
+trading-scripts/scripts/auto_trader_nostalgia_for_infinity.py
+        │
+        ├── notifier.py
+        ├── risk_guard.py
+        ├── reconcile.py
+        └── state_store.py → SQLite
+        │
+        ▼
+trading-scripts/export-dashboard-data.py
+trading-scripts/generate_realtime_data.py
+        │
+        ▼
+data-export/*.json
+        │
+        ▼
+frontend/src/* + server.js
+        │
+        ▼
+只读 Dashboard 页面 / API
+```
+
+---
+
+## 7. 本地开发与运行
+
+### 7.1 安装 Node 依赖
+
+根目录：
 
 ```bash
-git clone https://github.com/nasplycc/LuckyNiuMaNote.git
-cd LuckyNiuMaNote
-git checkout master  # 生产分支
+npm install
+```
 
-# 安装 Python 依赖
+前端目录：
+
+```bash
+cd frontend
+npm install
+```
+
+### 7.2 构建 Dashboard
+
+在仓库根目录：
+
+```bash
+npm run build
+```
+
+这条命令会执行：
+
+- 内容构建
+- 前端构建
+
+### 7.3 前端开发模式
+
+```bash
+npm run dev:frontend
+```
+
+### 7.4 启动 Web 服务
+
+```bash
+node server.js
+```
+
+默认端口：
+
+- `3000`
+
+### 7.5 Python 交易环境
+
+```bash
 cd trading-scripts
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
-
-# 安装 Node 依赖（用于 Dashboard）
-cd ..
-npm install
 ```
 
-### 2. 配置钱包
+---
 
-```bash
-cd trading-scripts
-cp config/.hl_config.sample config/.hl_config
-chmod 600 config/.hl_config
-```
+## 8. 交易脚本运行
 
-编辑 `config/.hl_config`：
+### 8.1 主交易脚本
 
-```ini
-# 主钱包地址（用于只读监控）
-MAIN_WALLET=0x...
-
-# API 钱包地址（用于下单）
-API_WALLET=0x...
-
-# API 钱包私钥（live 交易必填，monitor-only 可不填）
-API_PRIVATE_KEY=your_private_key_here
-```
-
-### 3. 配置运行时风控与告警
-
-```bash
-cp config/.runtime_config.sample.json config/.runtime_config.json
-```
-
-编辑 `config/.runtime_config.json`：
-
-```json
-{
-  "telegram": {
-    "bot_token": "123:abc",
-    "chat_id": "123456"
-  },
-  "risk": {
-    "max_consecutive_failures": 3,
-    "max_api_timeouts": 5,
-    "safe_mode_on_protection_failure": true,
-    "entry_fill_timeout_sec": 20,
-    "entry_fill_poll_interval_sec": 2
-  }
-}
-```
-
-### 4. 验证流程（强烈建议按顺序执行）
-
-#### 阶段 1：monitor-only 验证（只读）
-
-不填写 `API_PRIVATE_KEY`，仅验证数据拉取和状态记录：
+当前主脚本：
 
 ```bash
 cd trading-scripts
@@ -169,156 +411,233 @@ source .venv/bin/activate
 python scripts/auto_trader_nostalgia_for_infinity.py
 ```
 
-确认：
-- ✅ 程序正常启动
-- ✅ 能拉取行情与账户状态
-- ✅ 能记录信号到 `state/trader_state.db`
-- ✅ 不会真实下单
+也可以通过已有包装脚本启动：
 
-#### 阶段 2：Telegram 告警验证
+- `run_auto_trader.sh`
+- `run_nfi_local.sh`
+- `start_trader.sh`
 
-配置好 `.runtime_config.json` 中的 Telegram 凭据，启动后确认能收到消息。
+### 8.2 其他策略脚本
 
-#### 阶段 3：小额 live 验证
+仓库里还保留了其他策略实现，例如：
 
-仅在上述两步通过后，再填写 `API_PRIVATE_KEY`，并用极小仓位验证完整闭环。
+- `trader_01_boll_macd.py`
+- `trader_02_rsi_macd.py`
+- `trader_03_vwap.py`
+- `trader_04_supertrend.py`
+- `trader_05_adx.py`
+- `trader_06_bb_mean_reversion.py`
 
-### 5. systemd 托管（生产环境）
+这些可用于：
 
-创建服务文件 `/etc/systemd/system/luckyniuma-trader.service`：
+- 对比策略
+- 独立实验
+- 回测与观察
 
-```ini
-[Unit]
-Description=LuckyNiuMaNote Hyperliquid Trader
-After=network.target
-
-[Service]
-Type=simple
-User=Jaben
-Group=Users
-WorkingDirectory=/home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNote/trading-scripts
-Environment=PATH=/home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNote/trading-scripts/.venv/bin
-ExecStart=/home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNote/trading-scripts/.venv/bin/python scripts/auto_trader_nostalgia_for_infinity.py
-Restart=always
-RestartSec=10
-
-[Install]
-WantedBy=multi-user.target
-```
-
-启用并启动：
-
-```bash
-sudo systemctl daemon-reload
-sudo systemctl enable luckyniuma-trader.service
-sudo systemctl start luckyniuma-trader.service
-sudo systemctl status luckyniuma-trader.service
-```
-
-### 6. Dashboard 部署
-
-```bash
-cd /home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNote
-npm run build
-node server.js
-```
-
-访问 `http://localhost:3000` 查看 Dashboard。
+但当前实盘主线应以你实际运行的主脚本为准。
 
 ---
 
-## 当前策略：NFI Short-Only 反转策略
+## 9. 配置与敏感文件
 
-基于 [NostalgiaForInfinity](https://github.com/iterativv/NostalgiaForInfinity) 思路改造，默认只做空，捕捉反弹衰竭后的做空机会。
+仓库中与配置相关的重要路径：
 
-**交易标的**: BTC（仅做空）、ETH（双向）  
-**周期**: 1h
+- `trading-scripts/config/.hl_config`
+- `trading-scripts/config/.hl_config.sample`
+- `trading-scripts/config/.runtime_config.json`
+- `trading-scripts/config/.runtime_config.sample.json`
 
-### 指标体系
+一般来说：
 
-| 指标 | 参数 | 用途 |
-|------|------|------|
-| EMA 快/趋势/长期 | 20 / 50 / 200 | 趋势方向与入场锚点 |
-| RSI 快速/主周期 | 4 / 14 | 超买超卖判断 |
-| Bollinger Bands | 20 期，2σ | 识别反弹触顶区域 |
-| ATR | 14 | 波动率驱动止损止盈 |
-| Volume SMA | 30 | 过滤低流动性假信号 |
+- `.sample` 文件用于模板
+- 真实密钥 / 钱包 / 告警配置应放在本地实际配置文件中
 
-### 入场条件（做空）
+使用前请自行确认：
 
-- EMA50 < EMA200 且价格低于 EMA200 上方容差
-- 价格触及布林上轨或反弹至 EMA20 上方
-- RSI(4) > 79、RSI(14) > 62（BTC 默认值，ETH 稍有不同）
-- 成交量通过过滤，价格结构出现回落确认
-
-### 风控参数
-
-| 参数 | 值 |
-|------|----|
-| 最大杠杆 | 3x（默认 2x） |
-| 单笔最大持仓 | $294 |
-| ATR 止损倍数 | BTC 2.4x / ETH 2.8x |
-| ATR 止盈倍数 | BTC 4.0x / ETH 2.8x |
-| 开仓冷却期 | 4 小时 |
-| 最大同时持仓 | 2 个 |
-| 手续费后最低利润 | 0.5% |
+- API 钱包权限
+- 风险参数
+- Telegram 配置
+- 是否处于 monitor-only 模式
 
 ---
 
-## 手动交易 CLI
+## 10. 生产运行相关文件
 
-```bash
-cd trading-scripts
-source .venv/bin/activate
+当前仓库中已包含若干基础设施文件：
 
-# 查看账户状态
-python scripts/hl_trade.py status
+- `infra/luckyniuma-backend.service`
+- `infra/luckyniuma-backend.nas.service`
+- `infra/luckyniuma-dashboard-refresh.nas.service`
+- `infra/nginx-luckyniuma.conf`
+- `deploy.sh`
+- `scripts/setup-https.sh`
 
-# 资金划转（现货 → 合约）
-python scripts/transfer.py to-perp --amount 90
+这些文件反映了项目的真实生产部署方式：
 
-# 下单
-python scripts/hl_trade.py market-buy --coin BTC --size 0.001
-python scripts/hl_trade.py sell --coin ETH --size 0.01
+- backend / Web 服务常驻
+- dashboard 数据定期或触发刷新
+- 可配合 nginx 暴露页面
+- 支持本地 NAS / Linux 环境部署
 
-# 查看持仓与订单
-python scripts/hl_trade.py orders
-```
-
----
-
-## 安全提示
-
-⚠️ **重要**：
-
-- `.hl_config` 和 `.runtime_config.json` 已加入 `.gitignore`，**永远不要提交到 git**
-- API 私钥权限设为 `600`，不要分享给任何人
-- 建议先用 monitor-only 模式验证，再做小额 live
-- 真正 live 之前，先手动检查一次 Hyperliquid API wallet 权限、转账和 reduce-only 保护单行为
+> 注意：不同机器上的真实 service 名、部署路径、用户、端口和反向代理配置可能不同，使用前请按当前机器实际情况核对。
 
 ---
 
-## 技术栈
+## 11. 当前前端页面结构
 
-| 层 | 技术 |
-|----|------|
-| 前端 | 原生 HTML/CSS/JS（零框架依赖） |
-| 后端 | Node.js + Express 5 |
-| 交易脚本 | Python 3.12 + hyperliquid-python-sdk |
-| 进程管理 | PM2 / systemd |
-| 状态存储 | SQLite |
-| 钱包 | eth-account（以太坊兼容） |
+当前前端为 React SPA，主要页面包括：
+
+- `/`
+- `/dashboard`
+- `/trades`
+- `/strategy`
+- `/learn`
+- `/chart`
+- `/entry/:slug`
+
+当前 Web 服务也暴露了若干 API 路径，例如：
+
+- `/api/trader-status`
+- `/api/traders-status`
+- 以及其他图表 / 指标 / 账户状态相关接口
+
+整体展示定位是：
+
+- 总览优先
+- 风险状态优先
+- 当前持仓优先
+- 告警与恢复状态清晰可见
+- 次级说明后置
 
 ---
 
-## 参考
+## 12. 关键脚本说明
 
-- [NostalgiaForInfinity](https://github.com/iterativv/NostalgiaForInfinity) — 策略思路来源
-- [OpenClaw](https://openclaw.ai) — AI 助手框架
-- [LuckyClaw](https://luckyclaw.win) — 原始实验灵感来源
+### `trading-scripts/scripts/auto_trader_nostalgia_for_infinity.py`
+
+当前主实盘机器人：
+
+- 获取行情
+- 计算信号
+- 执行开平仓
+- 管理保护单
+- 处理 SAFE_MODE
+- 与 SQLite / Telegram / 对账逻辑联动
+
+### `trading-scripts/scripts/state_store.py`
+
+SQLite 状态层：
+
+- 负责持久化交易与系统状态
+- 为风控和 dashboard 导出提供统一状态来源
+
+### `trading-scripts/scripts/risk_guard.py`
+
+SAFE_MODE 与风险计数逻辑：
+
+- 负责进入 / 退出 SAFE_MODE
+- 负责记录风险状态与保护状态
+
+### `trading-scripts/scripts/reconcile.py`
+
+启动对账与保护状态校验：
+
+- 检查交易所状态与本地状态是否一致
+- 发现问题时输出告警或触发保护机制
+
+### `trading-scripts/scripts/notifier.py`
+
+Telegram 告警发送器：
+
+- 将关键运行事件推送到 Telegram
+
+### `trading-scripts/export-dashboard-data.py`
+
+Dashboard 导出层：
+
+- 从 SQLite / 日志 / 运行状态生成 JSON
+- 输出给前端页面消费
+
+### `server.js`
+
+Node/Express 服务：
+
+- 提供 React SPA 页面
+- 提供 `/data-export` 静态数据
+- 提供运行状态 API
+- 对 Hyperliquid 接口做部分读取与指标计算支持
 
 ---
 
-**免责声明**：本项目仅供学习研究使用。加密货币交易有风险，请谨慎参与。
+## 13. 适合谁用
 
-**License**: MIT
+这个仓库更适合：
+
+- 已经在 Hyperliquid 上做实盘或准实盘交易
+- 希望把交易逻辑、风控、状态展示固化到一个仓库
+- 需要 SAFE_MODE / 对账 / 告警这类生产化能力
+- 需要一个只读 dashboard 快速查看运行状态
+
+它不适合：
+
+- 作为通用量化平台模板直接套用
+- 作为完整的多交易所聚合框架
+- 作为单纯的前端页面项目
+
+---
+
+## 14. 维护建议
+
+如果后续继续演进，建议遵守以下原则：
+
+1. **实盘逻辑优先稳定，不要为了页面改动去冒险动执行链路**
+2. **SAFE_MODE 与对账逻辑属于高优先级，不要轻易弱化**
+3. **前端只做展示，不要把执行判断偷偷搬进页面层**
+4. **导出层保持中间层角色，避免前端直接耦合 SQLite 细节**
+5. **生产改动前先 monitor-only 验证，再小额 live 验证**
+
+---
+
+## 15. 相关文档建议阅读顺序
+
+如果你是第一次接手这个仓库，推荐按这个顺序读：
+
+1. `README.md`
+2. `PROJECT_OVERVIEW.md`
+3. `DEPLOY.md`
+4. `trading-scripts/README.md`
+5. `trading-scripts/scripts/auto_trader_nostalgia_for_infinity.py`
+6. `trading-scripts/scripts/risk_guard.py`
+7. `trading-scripts/scripts/reconcile.py`
+8. `trading-scripts/export-dashboard-data.py`
+9. `server.js`
+10. `frontend/src/`
+
+---
+
+## 16. 免责声明
+
+本仓库用于交易执行、状态展示与决策支持。
+
+- 不构成投资建议
+- 不保证收益
+- 不替代人工风险判断
+- 在任何实盘环境中使用前，都应自行确认：
+  - 钱包与 API 权限
+  - 风控参数
+  - 杠杆与仓位设置
+  - SAFE_MODE / 告警 / 对账链路是否正常
+
+---
+
+## 17. 当前仓库边界
+
+本仓库只负责 **Hyperliquid / LuckyNiuMaNote 系统**。
+
+明确不包含：
+
+- A 股交易系统代码
+- workspace 中的私有身份文件
+- 其他无关实验项目的长期维护逻辑
+
+如果你在找的是 A 股系统，请到 `LuckyniumaA` 仓库，不要在这里混改。
