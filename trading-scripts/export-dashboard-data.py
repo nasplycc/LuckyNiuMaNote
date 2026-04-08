@@ -221,6 +221,9 @@ def query_one(sql: str, params: tuple = ()) -> Dict[str, Any]:
 
 
 def get_git_version() -> str:
+    app_version = (os.getenv("APP_VERSION") or "").strip()
+    if app_version:
+        return app_version
     try:
         out = subprocess.check_output(
             ["git", "rev-parse", "--short", "HEAD"],
@@ -231,6 +234,44 @@ def get_git_version() -> str:
         return out
     except Exception:
         return "unknown"
+
+
+def translate_alert_title(event_type: str) -> str:
+    mapping = {
+        "safe_mode": "风控保护",
+        "safe_mode_exit": "风控解除",
+        "failure": "运行失败",
+        "api_timeout": "接口超时",
+        "cycle_exception": "策略循环异常",
+        "system_event": "系统事件",
+        "startup": "启动检查",
+        "reconcile_ok": "状态对账正常",
+        "reconcile_failed": "状态对账失败",
+    }
+    return mapping.get(event_type, event_type)
+
+
+def translate_alert_message(message: str) -> str:
+    if not message:
+        return ""
+    translated = message
+    replacements = [
+        ("Exited SAFE_MODE", "已退出风控保护模式"),
+        ("SAFE_MODE", "风控保护模式"),
+        ("system startup completed", "系统启动完成"),
+        ("startup completed", "启动完成"),
+        ("Reconcile OK", "状态对账正常"),
+        ("reconcile ok", "状态对账正常"),
+        ("reconcile failed", "状态对账失败"),
+        ("api timeout", "接口请求超时"),
+        ("cycle exception", "策略循环异常"),
+        ("telegram notifier disabled", "Telegram 通知未启用"),
+        ("missing bot token or chat_id", "缺少机器人 Token 或 Chat ID"),
+        ("process healthy", "进程运行正常"),
+    ]
+    for src, dst in replacements:
+        translated = translated.replace(src, dst)
+    return translated
 
 
 def get_systemd_state(service_name: str) -> Dict[str, Any]:
@@ -811,7 +852,9 @@ def build_alerts(ctx: ExportContext) -> Dict[str, Any]:
                 "id": f"event_{row.get('id')}",
                 "level": level,
                 "title": event_type,
+                "title_zh": translate_alert_title(str(event_type)),
                 "message": message,
+                "message_zh": translate_alert_message(str(message)),
                 "symbol": symbol,
                 "created_at": row.get("created_at"),
                 "status": status,

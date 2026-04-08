@@ -24,6 +24,44 @@ function formatDistance(value, digits = 2) {
   return `${num >= 0 ? '+' : ''}${num.toFixed(digits)}`;
 }
 
+function formatEnvLabel(value) {
+  const env = String(value || 'production').toLowerCase();
+  const mapping = {
+    production: '生产环境',
+    prod: '生产环境',
+    staging: '预发布环境',
+    stage: '预发布环境',
+    development: '开发环境',
+    dev: '开发环境',
+    test: '测试环境',
+  };
+  return mapping[env] || value || '生产环境';
+}
+
+function formatAlertTitle(alert) {
+  if (!alert) return '系统提醒';
+  if (alert.title_zh) return alert.title_zh;
+  if (alert.title === 'safe_mode_exit') return '风控解除';
+  return alert.title || '系统提醒';
+}
+
+function formatAlertMessage(alert) {
+  if (!alert) return '—';
+  return alert.message_zh || alert.message || '—';
+}
+
+function formatAlertLevel(level, isRecovery = false) {
+  if (isRecovery) return '已恢复';
+  const mapping = {
+    critical: '严重',
+    error: '错误',
+    warn: '警告',
+    warning: '警告',
+    info: '提示',
+  };
+  return mapping[String(level || 'info').toLowerCase()] || '提示';
+}
+
 function statusText(botStatus) {
   if (!botStatus) return '未知';
   if (botStatus.safe_mode) return 'SAFE_MODE';
@@ -406,24 +444,24 @@ function HeroStatusMeta({ meta, botStatus, latestAlerts, recoveryAlert, position
               ? '运行正常'
               : '等待机会';
   const badgeText = botStatus?.safe_mode
-    ? 'SAFE_MODE 生效中'
+    ? '风控保护生效中'
     : botStatus?.monitor_only
-      ? 'MONITOR_ONLY 观察中'
+      ? '观察模式运行中'
       : !botStatus?.sqlite_ok
         ? '状态存储待检查'
         : recoveryAlert?.title
           ? '系统已恢复'
-          : blockingAlert?.title
-            ? `提醒：${blockingAlert.title}`
+          : blockingAlert?.title_zh || blockingAlert?.title
+            ? `提醒：${blockingAlert?.title_zh || blockingAlert?.title}`
             : positionsCount > 0
               ? '系统正常，正在管理持仓'
               : '当前空仓，等待下一次机会';
 
   return (
     <div className="compact-hero-meta compact-hero-meta-upgraded">
-      <div><span>环境</span><strong>{meta?.env || 'production'}</strong></div>
+      <div><span>环境</span><strong>{formatEnvLabel(meta?.env)}</strong></div>
       <div><span>交易所</span><strong>{meta?.exchange || 'Hyperliquid'}</strong></div>
-      <div><span>版本</span><strong>{botStatus?.version || meta?.git_version || 'unknown'}</strong></div>
+      <div><span>版本</span><strong>{botStatus?.version || meta?.git_version || '未知版本'}</strong></div>
       <div className={`hero-meta-status hero-meta-status-${badgeTone}`}>
         <span className="hero-meta-status-badge">{badgeLabel}</span>
         <strong>{badgeText}</strong>
@@ -440,7 +478,7 @@ function CompactHero({ meta, botStatus, runtimeStatus, runtimeTone, positionsCou
         <h2 className="dashboard-title compact-hero-title">交易总控台</h2>
         <div className="dashboard-hero-status-row compact-hero-status-row">
           <span className={`hero-status-pill ${runtimeTone}`}>服务 {runtimeStatus}</span>
-          <span className={`hero-status-pill ${botStatus?.monitor_only ? 'warning' : 'success'}`}>{botStatus?.monitor_only ? 'MONITOR_ONLY' : 'LIVE_EXECUTION'}</span>
+          <span className={`hero-status-pill ${botStatus?.monitor_only ? 'warning' : 'success'}`}>{botStatus?.monitor_only ? '观察模式' : '实盘执行'}</span>
           <span className="hero-status-pill neutral">持仓 {positionsCount} 个</span>
         </div>
       </div>
@@ -654,13 +692,13 @@ export default function DashboardPage() {
                 return (
                   <article className={`dashboard-alert-item level-${alert.level || 'info'} ${isRecovery ? 'alert-recovery' : ''}`} key={alert.id}>
                     <div className="dashboard-alert-top">
-                      <strong>{isRecovery ? 'safe_mode_exit · 已恢复' : alert.title}</strong>
+                      <strong>{isRecovery ? '风控解除 · 已恢复' : formatAlertTitle(alert)}</strong>
                       <span>{formatTs(alert.created_at)}</span>
                     </div>
-                    <p>{alert.message || '—'}</p>
+                    <p>{formatAlertMessage(alert)}</p>
                     <div className="dashboard-alert-footer">
                       {alert.symbol && <div className="dashboard-alert-symbol">标的：{alert.symbol}</div>}
-                      <span className={`alert-level-badge level-${alert.level || 'info'} ${isRecovery ? 'level-recovery' : ''}`}>{isRecovery ? 'RECOVERY' : (alert.level || 'info').toUpperCase()}</span>
+                      <span className={`alert-level-badge level-${alert.level || 'info'} ${isRecovery ? 'level-recovery' : ''}`}>{formatAlertLevel(alert.level, isRecovery)}</span>
                     </div>
                   </article>
                 );

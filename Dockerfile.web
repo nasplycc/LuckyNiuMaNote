@@ -1,5 +1,6 @@
 FROM node:20-alpine AS frontend-build
 WORKDIR /app
+ARG APP_VERSION=unknown
 
 COPY frontend/package*.json ./frontend/
 WORKDIR /app/frontend
@@ -17,6 +18,8 @@ RUN npm run build
 
 FROM node:20-alpine AS runtime
 WORKDIR /app
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
 ENV NODE_ENV=production
 ENV PORT=5288
 ENV LISTEN_HOST=0.0.0.0
