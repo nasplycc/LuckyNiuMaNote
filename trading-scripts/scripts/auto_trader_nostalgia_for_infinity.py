@@ -40,6 +40,7 @@ CONFIG = {
     "main_wallet": "",
     "api_wallet": "",
     "api_private_key": os.getenv("HL_API_KEY", ""),
+    "trader_mode": (os.getenv("TRADER_MODE", "monitor") or "monitor").strip().lower(),
     "symbols": ["BTC", "ETH"],
     "timeframe": "1h",
     "max_leverage": 3,
@@ -268,15 +269,21 @@ class NostalgiaForInfinityTrader:
         self.notifier = TelegramNotifier()
         self.guard = RiskGuard(self.store)
         self._size_decimals_cache: Dict[str, int] = {}
+        mode = str(CONFIG.get("trader_mode") or "monitor").strip().lower()
         key = (CONFIG.get("api_private_key") or "").strip()
-        if key:
-            self.account = Account.from_key(key)
-            self.exchange = Exchange(
-                self.account,
-                constants.MAINNET_API_URL,
-                account_address=CONFIG["main_wallet"],
-            )
+        if mode == "live":
+            if key:
+                self.account = Account.from_key(key)
+                self.exchange = Exchange(
+                    self.account,
+                    constants.MAINNET_API_URL,
+                    account_address=CONFIG["main_wallet"],
+                )
+            else:
+                logger.warning("TRADER_MODE=live 但 API_PRIVATE_KEY 未配置：回退为 monitor-only，不会向 Hyperliquid 下单")
         else:
+            if key:
+                logger.info("TRADER_MODE=%s：即使检测到 API_PRIVATE_KEY，也不会下单", mode)
             logger.warning("API_PRIVATE_KEY 未配置：仅拉取行情与信号日志，不会向 Hyperliquid 下单")
         self.last_loss_time = None
         self.peak_balance = 0.0
@@ -1157,10 +1164,25 @@ class NostalgiaForInfinityTrader:
 def main() -> None:
     load_hl_config()
     load_runtime_config()
+    CONFIG["trader_mode"] = (os.getenv("TRADER_MODE", CONFIG.get("trader_mode", "monitor")) or "monitor").strip().lower()
+    if CONFIG["trader_mode"] not in {"monitor", "live"}:
+        logger.warning("Unknown TRADER_MODE=%s, fallback to monitor", CONFIG["trader_mode"])
+        CONFIG["trader_mode"] = "monitor"
     if not CONFIG["main_wallet"]:
-        logger.error("MAIN_WALLET missing in trading-scripts/config/.hl_config")
-        raise SystemExit(1)
-    if not CONFIG["api_private_key"]:
+        env_wallet = (os.getenv("LUCKYNIUMA_WALLET") or "").strip()
+        if env_wallet:
+            CONFIG["main_wallet"] = env_wallet
+            logger.info("MAIN_WALLET not found in .hl_config, using LUCKYNIUMA_WALLET from environment")
+    if not CONFIG["main_wallet"]:
+        logger.warning(
+            "MAIN_WALLET missing: trader will not start live/monitor loop. "
+            "Set trading-scripts/config/.hl_config or LUCKYNIUMA_WALLET to enable trader startup."
+        )
+        return
+    if CONFIG["trader_mode"] == "live" and not CONFIG["api_private_key"]:
+        logger.warning("TRADER_MODE=live 但 API_PRIVATE_KEY 缺失：回退为 monitor-only")
+        CONFIG["trader_mode"] = "monitor"
+    elif not CONFIG["api_private_key"]:
         logger.warning("API_PRIVATE_KEY 缺失：将启动 NFI 进程但仅记录信号；补齐密钥后重启 auto-trader 即可恢复实盘")
 
     trader = NostalgiaForInfinityTrader()

@@ -1,0 +1,72 @@
+services:
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: luckyniuma-web
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-5288}
+      LISTEN_HOST: ${LISTEN_HOST:-0.0.0.0}
+      SITE_PUBLIC_URL: ${SITE_PUBLIC_URL:-http://localhost:5288}
+    ports:
+      - "${PORT:-5288}:${PORT:-5288}"
+    volumes:
+      - ./data-export:/app/data-export
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  trader:
+    build:
+      context: .
+      dockerfile: Dockerfile.trader
+    container_name: luckyniuma-trader
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
+      LUCKYNIUMA_WALLET: ${LUCKYNIUMA_WALLET:-}
+      HL_API_KEY: ${HL_API_KEY:-}
+      TRADER_MODE: ${TRADER_MODE:-monitor}
+    volumes:
+      - ./trading-scripts/state:/app/trading-scripts/state
+      - ./trading-scripts/config:/app/trading-scripts/config
+      - ./data-export:/app/data-export
+      - ./logs:/app/logs
+    working_dir: /app/trading-scripts
+    command: ["python", "scripts/auto_trader_nostalgia_for_infinity.py"]
+    restart: on-failure:3
+    profiles: ["trader"]
+
+  exporter:
+    build:
+      context: .
+      dockerfile: Dockerfile.trader
+    container_name: luckyniuma-exporter
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
+    volumes:
+      - ./trading-scripts/state:/app/trading-scripts/state
+      - ./trading-scripts/config:/app/trading-scripts/config
+      - ./data-export:/app/data-export
+      - ./logs:/app/logs
+      - ./frontend/public:/app/frontend/public
+      - ./frontend/dist:/app/frontend/dist
+    working_dir: /app/trading-scripts
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        while true; do
+          python export-dashboard-data.py || true
+          python generate_realtime_data.py || true
+          sleep 30
+        done
+    restart: unless-stopped
+    profiles: ["exporter"]

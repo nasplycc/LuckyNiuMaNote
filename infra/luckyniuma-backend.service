@@ -10,7 +10,7 @@ WorkingDirectory=/home/ubuntu/LuckyNiuMaNote
 Environment=NODE_ENV=production
 Environment=LISTEN_HOST=127.0.0.1
 Environment=TRUST_PROXY=1
-Environment=PORT=3000
+Environment=PORT=5288
 Environment=SITE_PUBLIC_URL=https://luckyniuma.com
 ExecStart=/usr/bin/node /home/ubuntu/LuckyNiuMaNote/server.js
 Restart=always

@@ -10,8 +10,8 @@ WorkingDirectory=/home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNot
 Environment=NODE_ENV=production
 Environment=LISTEN_HOST=0.0.0.0
 Environment=TRUST_PROXY=1
-Environment=PORT=3000
-Environment=SITE_PUBLIC_URL=http://192.168.31.197:3000
+Environment=PORT=5288
+Environment=SITE_PUBLIC_URL=http://192.168.31.197:5288
 ExecStart=/home/Jaben/.nvm/versions/node/v24.13.0/bin/node /home/Jaben/.openclaw/workspace-finnace-bot/repos/LuckyNiuMaNote/server.js
 Restart=always
 RestartSec=3

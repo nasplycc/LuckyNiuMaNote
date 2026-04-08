@@ -5,7 +5,7 @@ const https = require('https');
 const { spawnSync } = require('child_process');
 
 const app = express();
-const PORT = parseInt(process.env.PORT || '3000', 10);
+const PORT = parseInt(process.env.PORT || '5288', 10);
 const LISTEN_HOST = process.env.LISTEN_HOST || '0.0.0.0';
 const DIST_DIR = path.resolve(__dirname, 'frontend/dist');
 const DIST_INDEX = path.join(DIST_DIR, 'index.html');

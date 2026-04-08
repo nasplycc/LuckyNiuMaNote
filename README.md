@@ -2,6 +2,119 @@
 
 Hyperliquid 实盘交易系统与只读 Dashboard 仓库。
 
+## Docker Quick Start
+
+> 当前仓库已经提供基础 Docker 化支持，默认目标是：**先安全跑起来，再决定是否进入 live trading**。
+
+### 默认端口
+
+- Web 默认端口：`5288`
+- 默认访问地址：`http://localhost:5288`
+
+### 已提供的文件
+
+- `Dockerfile.web`
+- `Dockerfile.trader`
+- `docker-compose.yml`
+- `.env.example`
+- `.dockerignore`
+
+### 1. 准备环境变量
+
+先复制一份环境变量模板：
+
+```bash
+cp .env.example .env
+```
+
+默认情况下，`.env.example` 会让系统以**安全模式**启动：
+
+- `web` 可直接运行
+- `exporter` 可生成 dashboard 数据
+- `trader` 默认 `TRADER_MODE=monitor`
+- 未配置 `HL_API_KEY` 时不会下单
+
+### 2. 仅启动 Web（最低风险）
+
+```bash
+docker compose up -d web
+```
+
+访问：
+
+- <http://localhost:5288>
+
+### 3. 启动 Exporter（生成 dashboard 数据）
+
+```bash
+docker compose --profile exporter up -d exporter
+```
+
+它会周期性生成：
+
+- `data-export/*.json`
+- `frontend/dist/realtime-data.json`
+
+### 4. 启动 Trader
+
+```bash
+docker compose --profile trader up -d trader
+```
+
+当前 `trader` 支持两种模式：
+
+#### `TRADER_MODE=monitor`
+
+默认模式，推荐所有首次部署用户先用这个。
+
+特点：
+
+- 允许只配置 `LUCKYNIUMA_WALLET`
+- 即使设置了 `HL_API_KEY`，也不会下单
+- 只做行情读取、信号计算、状态检查、日志记录
+
+#### `TRADER_MODE=live`
+
+显式实盘模式。
+
+要求：
+
+- 必须提供 `LUCKYNIUMA_WALLET`
+- 必须提供 `HL_API_KEY`
+
+如果设置了 `TRADER_MODE=live` 但缺少 `HL_API_KEY`，系统会自动回退为 `monitor`，避免危险启动。
+
+### 5. 推荐的启动顺序
+
+建议按下面顺序验证：
+
+1. `web`
+2. `exporter`
+3. `trader (monitor)`
+4. 最后才考虑 `trader (live)`
+
+### 6. 重要环境变量
+
+| 变量 | 作用 | 默认值 |
+|------|------|--------|
+| `PORT` | Web 监听端口 | `5288` |
+| `LISTEN_HOST` | Web 监听地址 | `0.0.0.0` |
+| `SITE_PUBLIC_URL` | 对外站点地址 | `http://localhost:5288` |
+| `LUCKYNIUMA_WALLET` | 主钱包地址 | 空 |
+| `HL_API_KEY` | Hyperliquid API 私钥 | 空 |
+| `TRADER_MODE` | `monitor` / `live` | `monitor` |
+| `TG_BOT_TOKEN` | Telegram Bot Token | 空 |
+| `TG_CHAT_ID` | Telegram Chat ID | 空 |
+
+### 7. 风险提示
+
+- **默认推荐先跑 `monitor`，不要首次部署就直接 `live`。**
+- 公开分发场景下，**不要把真实 `.hl_config`、`.runtime_config.json`、私钥、数据库文件提交到仓库或打进镜像。**
+- `trading-scripts/state/`、`trading-scripts/config/`、`logs/`、`data-export/` 应视为运行时数据目录。
+- 如果你已经有本地生产系统在运行，建议始终在**独立目录、独立端口、独立配置**下验证 Docker 版本。
+
+---
+
 这个仓库不是单纯的前端项目，也不是单纯的策略实验目录，而是一套围绕 **Hyperliquid 永续合约交易、实盘风控、运行状态持久化、只读可视化展示** 组织起来的代码集合。
 
 当前仓库包含：
@@ -386,7 +499,7 @@ node server.js
 
 默认端口：
 
-- `3000`
+- `5288`
 
 ### 7.5 Python 交易环境
 

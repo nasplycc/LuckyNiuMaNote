@@ -22,7 +22,7 @@ if [ -f "$TRADE_FILE" ]; then
 fi
 
 # 获取当前持仓和账户信息
-ACCOUNT_INFO=$(curl -s http://localhost:3000/api/position 2>/dev/null || echo '{}')
+ACCOUNT_INFO=$(curl -s http://localhost:5288/api/position 2>/dev/null || echo '{}')
 TOTAL_VALUE=$(echo "$ACCOUNT_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('account',{}).get('totalValue',0))" 2>/dev/null || echo "97.98")
 PNL=$(echo "$ACCOUNT_INFO" | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('account',{}).get('totalPnl',0))" 2>/dev/null || echo "0")
 

@@ -7,13 +7,13 @@
 | 组件 | 作用 | 典型进程/服务 |
 |------|------|----------------|
 | **Express (`server.js`)** | 静态站点（React 构建产物）、REST API（仓位、机器人状态、K 线等） | `systemd: luckyniuma-backend` |
-| **Nginx** | 对外 80/443，反代到本机 `127.0.0.1:3000`；TLS 由 Certbot 管理 | `nginx` |
+| **Nginx** | 对外 80/443，反代到本机 `127.0.0.1:5288`；TLS 由 Certbot 管理 | `nginx` |
 | **React 前端** | Vite 构建输出在 `frontend/dist/`，由 `server.js` 挂载 | 构建时使用 `npm run build` |
 | **内容构建 (`build.js`)** | 把 `content/` 编译为 `frontend/public/generated-data.json` 与 `src/generated-data.js` | 构建时执行 |
 | **交易脚本** | Python 策略、实时 JSON、CLI | `PM2: ecosystem.army.json` |
 | **日志** | 策略运行日志、PM2 合并日志 | 目录 `logs/`（仓库根下，与 `.gitignore` 中规则一致时可能不提交） |
 
-**不要把 `server.js` 同时交给 systemd 与另一套 PM2（例如旧脚本里的 `lucky-backend`）各起一个实例**，否则会争用端口 `3000`。当前推荐：**网站仅由 `luckyniuma-backend` 托管**；量化进程仅由 PM2 托管。
+**不要把 `server.js` 同时交给 systemd 与另一套 PM2（例如旧脚本里的 `lucky-backend`）各起一个实例**，否则会争用端口 `5288`。当前推荐：**网站仅由 `luckyniuma-backend` 托管**；量化进程仅由 PM2 托管。
 
 ## 2. 系统依赖与环境
 
@@ -23,7 +23,7 @@
 - **Nginx + Certbot**：由 `scripts/setup-https.sh` 安装（见下文）。
 - **PM2**：`sudo npm install -g pm2`（交易与实时数据进程使用）。
 
-云厂商安全组需放行 **80、443**（申请 Let’s Encrypt 与对外网站）；**无需**对公网开放 `3000`（仅本机回环）。
+云厂商安全组需放行 **80、443**（申请 Let’s Encrypt 与对外网站）；**无需**对公网开放 `5288`（仅本机回环）。
 
 ## 3. 获取代码与首次构建（网站部分）
 
@@ -46,7 +46,7 @@ npm run build
 
 ```bash
 node server.js
-# 默认监听环境变量 PORT（缺省 3000）与 LISTEN_HOST（缺省 0.0.0.0）
+# 默认监听环境变量 PORT（缺省 5288）与 LISTEN_HOST（缺省 0.0.0.0）
 ```
 
 生产环境应设 **`LISTEN_HOST=127.0.0.1`**，由 Nginx 反代（见 `infra/luckyniuma-backend.service`）。
@@ -59,7 +59,7 @@ node server.js
 
 | 变量 | 说明 |
 |------|------|
-| `PORT` |  Node 监听端口，默认 `3000`，需与 Nginx `upstream` 一致。 |
+| `PORT` |  Node 监听端口，默认 `5288`，需与 Nginx `upstream` 一致。 |
 | `LISTEN_HOST` | 生产建议 `127.0.0.1`，仅本机访问。 |
 | `TRUST_PROXY` | 设为 `1` 时开启 `trust proxy`，便于 Express 识别 HTTPS 与客户端地址。 |
 | `SITE_PUBLIC_URL` | 日志中展示的站点根 URL（可选）。 |
@@ -81,7 +81,7 @@ Nginx 站点模板：`infra/nginx-luckyniuma.conf`。默认 `server_name` 为 `l
 
 - **DNS**：域名 **A / AAAA** 记录指向本机公网 IP（验证方式为 **HTTP-01**，Let’s Encrypt 需经 80 端口访问到你的 Nginx）。
 - **入站端口**：云安全组或本机防火墙放行 **80**（校验与跳转）、**443**（HTTPS）。
-- **Nginx 与站点**：`setup-https.sh` 会复制模板、启用站点、启动后端，使 80 上能反代到 `127.0.0.1:3000`，供 Certbot 完成验证。
+- **Nginx 与站点**：`setup-https.sh` 会复制模板、启用站点、启动后端，使 80 上能反代到 `127.0.0.1:5288`，供 Certbot 完成验证。
 
 ### 5.2 一键脚本与环境变量
 
@@ -237,7 +237,7 @@ sudo -u ubuntu pm2 restart all && sudo -u ubuntu pm2 save
 7. 创建或确认 **`logs/`** 权限属主与运行用户一致。
 8. 安装 PM2、`pm2 start ecosystem.army.json`、`pm2 save`、`pm2 startup`。
 9. 安全组放行 **80/443**；验证 `https://你的域名/` 与 `https://你的域名/api/position`。
-10. 确认 **仅一个** Node 进程监听 `3000`（`ss -tlnp | grep 3000`）。
+10. 确认 **仅一个** Node 进程监听 `5288`（`ss -tlnp | grep 5288`）。
 
 ## 10. 主要 URL 与 API（便于验收）
 
