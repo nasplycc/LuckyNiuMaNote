@@ -163,6 +163,52 @@ docker compose -f docker-compose.yml -f docker-compose.live.yml up -d trader
 
 如果后续想把 `exporter` 独立成第三个镜像，也可以在 workflow matrix 里继续加。
 
+### 9. 直接从 Docker Hub 使用
+
+如果你不想先 clone 仓库，也可以直接拉取镜像：
+
+```bash
+docker pull nasplycc/luckyniumanote-web:latest
+docker pull nasplycc/luckyniumanote-trader:latest
+```
+
+#### 仅运行 Web
+
+```bash
+docker run -d \
+  --name luckyniuma-web \
+  -p 5288:5288 \
+  -e PORT=5288 \
+  -e LISTEN_HOST=0.0.0.0 \
+  nasplycc/luckyniumanote-web:latest
+```
+
+然后访问：
+
+- <http://localhost:5288>
+
+#### 以 monitor 模式运行 Trader
+
+```bash
+docker run -d \
+  --name luckyniuma-trader \
+  -e TRADER_MODE=monitor \
+  -e LUCKYNIUMA_WALLET=0xYourWallet \
+  -v $(pwd)/trading-state:/app/trading-scripts/state \
+  -v $(pwd)/trading-config:/app/trading-scripts/config \
+  -v $(pwd)/logs:/app/logs \
+  -v $(pwd)/data-export:/app/data-export \
+  nasplycc/luckyniumanote-trader:latest
+```
+
+#### 进入 live 前请确认
+
+- 已先完成 monitor 验证
+- `LUCKYNIUMA_WALLET` 正确
+- `HL_API_KEY` 已正确配置
+- 挂载目录不是临时目录
+- 你明确知道这会启用真实下单能力
+
 ---
 
 这个仓库不是单纯的前端项目，也不是单纯的策略实验目录，而是一套围绕 **Hyperliquid 永续合约交易、实盘风控、运行状态持久化、只读可视化展示** 组织起来的代码集合。
