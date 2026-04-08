@@ -138,9 +138,12 @@ def hl_request(body: Dict[str, Any]) -> Any:
     return resp.json()
 
 
-def fetch_hyperliquid_user_fills() -> List[Dict[str, Any]]:
-    hl_cfg = read_hl_config()
-    wallet = hl_cfg.get("MAIN_WALLET") or DEFAULT_WALLET
+def fetch_hyperliquid_user_fills(ctx_wallet: str | None = None) -> List[Dict[str, Any]]:
+    wallet = ctx_wallet
+    if not wallet:
+        runtime_cfg = read_runtime_config()
+        generated_data = read_generated_data()
+        wallet = resolve_wallet(runtime_cfg, generated_data)
     if not wallet:
         return []
     try:
@@ -577,7 +580,7 @@ def build_positions(ctx: ExportContext) -> Dict[str, Any]:
 
 
 def build_trades(ctx: ExportContext) -> Dict[str, Any]:
-    fills = fetch_hyperliquid_user_fills()
+    fills = fetch_hyperliquid_user_fills(ctx.wallet)
     trades: List[Dict[str, Any]] = []
 
     for fill in fills:
@@ -731,6 +734,7 @@ def build_performance(ctx: ExportContext) -> Dict[str, Any]:
 
 
 def build_bot_status(ctx: ExportContext) -> Dict[str, Any]:
+    docker_hint = bool(os.getenv("LUCKYNIUMA_WALLET") or os.getenv("TRADER_MODE") or os.getenv("HL_API_KEY"))
     systemd_state = get_systemd_state(SERVICE_NAME)
     latest_log = find_latest_log()
     log_lines = tail_lines(latest_log, 200) if latest_log else []
@@ -742,17 +746,25 @@ def build_bot_status(ctx: ExportContext) -> Dict[str, Any]:
     safe_mode = bool(risk_guard_state.get("safe_mode", False))
     safe_reason = risk_guard_state.get("safe_reason", "")
     safe_mode_updated_at = risk_guard.get("updated_at")
+    trader_mode = (os.getenv("TRADER_MODE", "monitor") or "monitor").strip().lower()
+    api_key_present = bool((os.getenv("HL_API_KEY") or "").strip() or read_hl_config().get("API_PRIVATE_KEY"))
+    if docker_hint and systemd_state.get("service_status") == "unknown":
+        service_status = "running" if last_heartbeat else "starting"
+        process_healthy = bool(last_heartbeat)
+    else:
+        service_status = systemd_state.get("service_status")
+        process_healthy = bool(systemd_state.get("process_healthy"))
 
     return {
         "updated_at": ctx.now_iso,
         **systemd_state,
+        "service_status": service_status,
+        "process_healthy": process_healthy,
         "safe_mode": safe_mode,
         "safe_reason": safe_reason,
         "safe_mode_updated_at": safe_mode_updated_at,
-        "monitor_only": not bool(
-            os.getenv("HL_API_KEY")
-            or read_hl_config().get("API_PRIVATE_KEY")
-        ),
+        "trader_mode": trader_mode,
+        "monitor_only": (trader_mode != "live") or (not api_key_present),
         "last_heartbeat_at": last_heartbeat,
         "last_trade_at": last_order.get("created_at"),
         "last_reconcile_at": last_event.get("created_at"),

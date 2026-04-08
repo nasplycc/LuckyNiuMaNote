@@ -51,6 +51,9 @@ services:
     environment:
       TZ: ${TZ:-Asia/Shanghai}
       PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
+      LUCKYNIUMA_WALLET: ${LUCKYNIUMA_WALLET:-}
+      HL_API_KEY: ${HL_API_KEY:-}
+      TRADER_MODE: ${TRADER_MODE:-monitor}
     volumes:
       - ./trading-scripts/state:/app/trading-scripts/state
       - ./trading-scripts/config:/app/trading-scripts/config
