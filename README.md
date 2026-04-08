@@ -154,6 +154,7 @@ docker compose -f docker-compose.yml -f docker-compose.live.yml up -d trader
 - 默认推送多架构镜像：
   - `linux/amd64`
   - `linux/arm64`
+- 当 `Docker` 分支发布时，同时产出 `latest` 标签
 
 要让自动发布真正生效，需要在 GitHub 仓库 Secrets 中配置：
 
