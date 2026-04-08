@@ -307,6 +307,37 @@ docker compose build
 - 所以从“镜像数量”看是 **2 个镜像**
 - 从“服务数量”看是 **3 个服务**
 
+### 8.5 不同启动模式对照表
+
+| 启动组合 | 适合场景 | 页面效果 | 风险等级 |
+|------|------|------|------|
+| `web` | 只验证页面是否能打开 | 页面能开，但数据可能不完整或不更新 | 最低 |
+| `web + exporter` | 想看接近当前系统的 dashboard 效果 | 推荐的只读看板模式，数据更完整、更接近现网 | 低 |
+| `web + exporter + trader(monitor)` | 想看更完整的监控栈 | 最接近完整系统，但 trader 只读不下单 | 低 |
+| `web + exporter + trader(live)` | 明确要启用真实交易 | 完整系统 + 实盘执行 | 高 |
+
+补充理解：
+
+- **不是必须单独做 exporter 镜像，web 才能展示看板。**
+- 真正关键的是：**是否有 exporter 服务在持续生成 `data-export/*.json` 和 `realtime-data.json`。**
+- 所以如果你想让 Docker 版 web 看起来尽量接近当前系统，推荐至少启动：
+
+```bash
+docker compose up -d web exporter
+```
+
+如果你还想让整套监控链路更完整，推荐：
+
+```bash
+docker compose up -d web exporter trader
+```
+
+并确保：
+
+```bash
+TRADER_MODE=monitor
+```
+
 ### 9. Docker Hub 与 GitHub Actions
 
 仓库已提供基础自动发布工作流：
