@@ -16,8 +16,11 @@ Hyperliquid 实盘交易系统与只读 Dashboard 仓库。
 - `Dockerfile.web`
 - `Dockerfile.trader`
 - `docker-compose.yml`
+- `docker-compose.monitor.yml`
+- `docker-compose.live.yml`
 - `.env.example`
 - `.dockerignore`
+- `.github/workflows/docker-publish.yml`
 
 ### 1. 准备环境变量
 
@@ -55,6 +58,21 @@ docker compose --profile exporter up -d exporter
 - `data-export/*.json`
 - `frontend/dist/realtime-data.json`
 
+### 3.1 一键启动监控栈（推荐）
+
+如果你希望一次启动 `web + exporter + trader(monitor)`，推荐使用：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.monitor.yml up -d
+```
+
+这个组合适合：
+
+- 首次部署验证
+- 演示环境
+- 只读监控与 dashboard 场景
+- 不希望触发真实下单的环境
+
 ### 4. 启动 Trader
 
 ```bash
@@ -84,6 +102,14 @@ docker compose --profile trader up -d trader
 
 如果设置了 `TRADER_MODE=live` 但缺少 `HL_API_KEY`，系统会自动回退为 `monitor`，避免危险启动。
 
+如需显式启用 live 覆盖文件：
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.live.yml up -d trader
+```
+
+**强烈建议先完成 monitor 验证，再进入 live。**
+
 ### 5. 推荐的启动顺序
 
 建议按下面顺序验证：
@@ -112,6 +138,29 @@ docker compose --profile trader up -d trader
 - 公开分发场景下，**不要把真实 `.hl_config`、`.runtime_config.json`、私钥、数据库文件提交到仓库或打进镜像。**
 - `trading-scripts/state/`、`trading-scripts/config/`、`logs/`、`data-export/` 应视为运行时数据目录。
 - 如果你已经有本地生产系统在运行，建议始终在**独立目录、独立端口、独立配置**下验证 Docker 版本。
+
+### 8. Docker Hub 与 GitHub Actions
+
+仓库已提供基础自动发布工作流：
+
+- `.github/workflows/docker-publish.yml`
+
+默认设计：
+
+- 当 `Docker` 分支发生 push 时自动构建
+- 同时构建：
+  - `nasplycc/luckyniumanote-web`
+  - `nasplycc/luckyniumanote-trader`
+- 默认推送多架构镜像：
+  - `linux/amd64`
+  - `linux/arm64`
+
+要让自动发布真正生效，需要在 GitHub 仓库 Secrets 中配置：
+
+- `DOCKERHUB_USERNAME`
+- `DOCKERHUB_TOKEN`
+
+如果后续想把 `exporter` 独立成第三个镜像，也可以在 workflow matrix 里继续加。
 
 ---
 

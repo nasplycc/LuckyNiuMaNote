@@ -8,3 +8,8 @@ logs/
 trading-scripts/config/.hl_config
 trading-scripts/config/.runtime_config.json
 trading-scripts/state/
+.env
+.env.local
+.env.*.local
+data-export/
+frontend/dist/

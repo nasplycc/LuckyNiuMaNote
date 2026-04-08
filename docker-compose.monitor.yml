@@ -1,0 +1,10 @@
+services:
+  web:
+    ports:
+      - "5288:5288"
+
+  exporter:
+    profiles: []
+
+  trader:
+    profiles: []

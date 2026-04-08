@@ -1,0 +1,5 @@
+services:
+  trader:
+    environment:
+      TRADER_MODE: live
+    restart: unless-stopped
