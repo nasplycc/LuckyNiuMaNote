@@ -132,14 +132,182 @@ docker compose -f docker-compose.yml -f docker-compose.live.yml up -d trader
 | `TG_BOT_TOKEN` | Telegram Bot Token | 空 |
 | `TG_CHAT_ID` | Telegram Chat ID | 空 |
 
-### 7. 风险提示
+### 7.1 运行结构说明
 
-- **默认推荐先跑 `monitor`，不要首次部署就直接 `live`。**
-- 公开分发场景下，**不要把真实 `.hl_config`、`.runtime_config.json`、私钥、数据库文件提交到仓库或打进镜像。**
-- `trading-scripts/state/`、`trading-scripts/config/`、`logs/`、`data-export/` 应视为运行时数据目录。
-- 如果你已经有本地生产系统在运行，建议始终在**独立目录、独立端口、独立配置**下验证 Docker 版本。
+当前 Docker 化版本可以理解成下面这个结构：
 
-### 8. Docker Hub 与 GitHub Actions
+```text
++---------------------------+
+|         web service       |
+|   Dockerfile.web image    |
+|   负责页面/API/静态展示    |
++-------------+-------------+
+              |
+              | 读取
+              v
++---------------------------+
+|      data-export/*.json   |
+| frontend/dist/realtime... |
++-------------+-------------+
+              ^
+              |
+              | 生成
++-------------+-------------+
+|      exporter service     |
+|  复用 Dockerfile.trader   |
+|  定时导出 dashboard 数据   |
++---------------------------+
+
++---------------------------+
+|       trader service      |
+|  复用 Dockerfile.trader   |
+| monitor: 只读/信号/状态   |
+| live:    真实下单执行     |
++---------------------------+
+```
+
+补充说明：
+
+- `web` 使用独立镜像：`Dockerfile.web`
+- `exporter` 当前**不是单独镜像**，而是复用 `Dockerfile.trader`
+- `trader` 与 `exporter` 共享 Python 运行环境，但职责不同：
+  - `trader` 负责交易/信号/状态循环
+  - `exporter` 负责导出 dashboard JSON 数据
+- 当前这种做法**不影响项目运行**，只是后续如果要继续产品化，可以再把 exporter 拆成独立镜像
+
+### 8. 一键构建与完整 Compose YAML 示例
+
+如果你希望直接复制一份完整的 Compose 配置，可以参考下面这份示例。
+
+它的特点是：
+
+- 可以一次性构建两个镜像：
+  - `luckyniuma-web-local`
+  - `luckyniuma-trader-local`
+- `exporter` 复用 trader 镜像，不会额外再 build 第三个镜像
+- 适合本地/NAS 一键启动完整监控栈
+
+```yaml
+services:
+  web:
+    image: luckyniuma-web-local:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.web
+    container_name: luckyniuma-web
+    env_file:
+      - .env
+    environment:
+      NODE_ENV: ${NODE_ENV:-production}
+      PORT: ${PORT:-5288}
+      LISTEN_HOST: ${LISTEN_HOST:-0.0.0.0}
+      SITE_PUBLIC_URL: ${SITE_PUBLIC_URL:-http://localhost:5288}
+    ports:
+      - "${PORT:-5288}:${PORT:-5288}"
+    volumes:
+      - ./data-export:/app/data-export
+      - ./logs:/app/logs
+    restart: unless-stopped
+
+  trader:
+    image: luckyniuma-trader-local:latest
+    build:
+      context: .
+      dockerfile: Dockerfile.trader
+    container_name: luckyniuma-trader
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
+      LUCKYNIUMA_WALLET: ${LUCKYNIUMA_WALLET:-}
+      HL_API_KEY: ${HL_API_KEY:-}
+      TRADER_MODE: ${TRADER_MODE:-monitor}
+    volumes:
+      - ./trading-scripts/state:/app/trading-scripts/state
+      - ./trading-scripts/config:/app/trading-scripts/config
+      - ./data-export:/app/data-export
+      - ./logs:/app/logs
+    working_dir: /app/trading-scripts
+    command: ["python", "scripts/auto_trader_nostalgia_for_infinity.py"]
+    restart: on-failure:3
+
+  exporter:
+    image: luckyniuma-trader-local:latest
+    depends_on:
+      - web
+    container_name: luckyniuma-exporter
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
+    volumes:
+      - ./trading-scripts/state:/app/trading-scripts/state
+      - ./trading-scripts/config:/app/trading-scripts/config
+      - ./data-export:/app/data-export
+      - ./logs:/app/logs
+      - ./frontend/public:/app/frontend/public
+      - ./frontend/dist:/app/frontend/dist
+    working_dir: /app/trading-scripts
+    command:
+      - /bin/sh
+      - -lc
+      - |
+        while true; do
+          python export-dashboard-data.py || true
+          python generate_realtime_data.py || true
+          sleep 30
+        done
+    restart: unless-stopped
+```
+
+### 8.1 一键构建两个镜像
+
+```bash
+docker compose build web trader
+```
+
+说明：
+
+- 会构建两个镜像：`web`、`trader`
+- `exporter` 直接复用 `trader` 镜像
+- 因此不需要单独再 build 第三个 exporter 镜像
+
+### 8.2 一键启动完整监控栈
+
+```bash
+docker compose up -d web trader exporter
+```
+
+如果你希望强制以 monitor 模式启动，先确认 `.env` 中：
+
+```bash
+TRADER_MODE=monitor
+```
+
+### 8.3 只构建镜像，不启动
+
+```bash
+docker compose build
+```
+
+这会把 compose 中需要 build 的本地镜像都先构建出来。
+
+### 8.4 推荐理解方式
+
+- `web`：页面和展示入口
+- `exporter`：数据加工层
+- `trader`：交易/监控主循环
+
+其中：
+
+- `web` 是独立镜像
+- `trader` 与 `exporter` 共用一个 Python 镜像
+- 所以从“镜像数量”看是 **2 个镜像**
+- 从“服务数量”看是 **3 个服务**
+
+### 9. Docker Hub 与 GitHub Actions
 
 仓库已提供基础自动发布工作流：
 
