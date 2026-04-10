@@ -567,7 +567,7 @@ def build_overview(ctx: ExportContext) -> Dict[str, Any]:
         "total_return_pct": 0.0,
         "open_positions_count": len(asset_positions),
         "open_orders_count": open_orders_count,
-        "bot_mode": "SAFE_MODE" if risk_guard_state.get("safe_mode") else ("MONITOR_ONLY" if risk_guard_state.get("trader_mode") != "live" else "LIVE"),
+        "bot_mode": "SAFE_MODE" if risk_guard_state.get("safe_mode") else ("MONITOR_ONLY" if os.getenv("TRADER_MODE", "monitor").lower() != "live" else "LIVE"),
         "strategy_name": "nostalgia_for_infinity",
         "updated_at": ctx.now_iso,
     }
