@@ -193,6 +193,11 @@ function DiagnosticCard({ item }) {
   const distanceFast = Number(item?.distance_to_short_rsi?.rsi_fast || 0);
   const distanceMain = Number(item?.distance_to_short_rsi?.rsi_main || 0);
   const volumeDistance = Number(item?.distance_to_volume_threshold || 0);
+  
+  // BTC 只做空，ETH 双向
+  const isBTCOnlyShort = item.symbol === 'BTC';
+  const longDistanceFast = Number(item?.distance_to_long_rsi?.rsi_fast || 0);
+  const longDistanceMain = Number(item?.distance_to_long_rsi?.rsi_main || 0);
 
   return (
     <article className="diagnostic-card diagnostic-card-refined">
@@ -213,18 +218,39 @@ function DiagnosticCard({ item }) {
       </div>
 
       <div className="diagnostic-focus-grid">
-        <div className="diagnostic-focus-card">
-          <span>RSI Fast 差值</span>
-          <strong className={distanceFast > 0 ? 'loss' : 'profit'}>{formatDistance(distanceFast, 2)}</strong>
-        </div>
-        <div className="diagnostic-focus-card">
-          <span>RSI Main 差值</span>
-          <strong className={distanceMain > 0 ? 'loss' : 'profit'}>{formatDistance(distanceMain, 2)}</strong>
-        </div>
-        <div className="diagnostic-focus-card">
-          <span>量能差值</span>
-          <strong className={volumeDistance > 0 ? 'loss' : 'profit'}>{formatDistance(volumeDistance, 2)}</strong>
-        </div>
+        {isBTCOnlyShort ? (
+          // BTC 只显示做空差值
+          <>
+            <div className="diagnostic-focus-card">
+              <span>做空 RSI Fast 差值</span>
+              <strong className={distanceFast > 0 ? 'loss' : 'profit'}>{formatDistance(distanceFast, 2)}</strong>
+            </div>
+            <div className="diagnostic-focus-card">
+              <span>做空 RSI Main 差值</span>
+              <strong className={distanceMain > 0 ? 'loss' : 'profit'}>{formatDistance(distanceMain, 2)}</strong>
+            </div>
+            <div className="diagnostic-focus-card">
+              <span>量能差值</span>
+              <strong className={volumeDistance > 0 ? 'loss' : 'profit'}>{formatDistance(volumeDistance, 2)}</strong>
+            </div>
+          </>
+        ) : (
+          // ETH 显示双向差值
+          <>
+            <div className="diagnostic-focus-card">
+              <span>做多 RSI Fast 差值</span>
+              <strong className={longDistanceFast < 0 ? 'profit' : 'loss'}>{formatDistance(longDistanceFast, 2)}</strong>
+            </div>
+            <div className="diagnostic-focus-card">
+              <span>做空 RSI Fast 差值</span>
+              <strong className={distanceFast > 0 ? 'loss' : 'profit'}>{formatDistance(distanceFast, 2)}</strong>
+            </div>
+            <div className="diagnostic-focus-card">
+              <span>量能差值</span>
+              <strong className={volumeDistance > 0 ? 'loss' : 'profit'}>{formatDistance(volumeDistance, 2)}</strong>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="diagnostic-tags diagnostic-tags-refined">
@@ -244,14 +270,37 @@ function DiagnosticCard({ item }) {
               <div><span>量能/均量</span><strong>{item.volume_ratio_to_sma != null ? `${(Number(item.volume_ratio_to_sma) * 100).toFixed(2)}%` : '暂无'}</strong></div>
             </div>
           </div>
-          <div className="diagnostic-side-card">
-            <div className="diagnostic-side-title">做空阈值</div>
-            <div className="diagnostic-thresholds">
-              <div><span>RSI Fast ≥</span><strong>{item?.thresholds?.short?.rsi_fast_min}</strong></div>
-              <div><span>RSI Main ≥</span><strong>{item?.thresholds?.short?.rsi_main_min}</strong></div>
-              <div><span>当前差值</span><strong className={distanceFast > 0 || distanceMain > 0 ? 'loss' : 'profit'}>{formatDistance(distanceFast, 2)} / {formatDistance(distanceMain, 2)}</strong></div>
+          {isBTCOnlyShort ? (
+            // BTC 只显示做空阈值
+            <div className="diagnostic-side-card">
+              <div className="diagnostic-side-title">做空阈值</div>
+              <div className="diagnostic-thresholds">
+                <div><span>RSI Fast ≥</span><strong>{item?.thresholds?.short?.rsi_fast_min}</strong></div>
+                <div><span>RSI Main ≥</span><strong>{item?.thresholds?.short?.rsi_main_min}</strong></div>
+                <div><span>当前差值</span><strong className={distanceFast > 0 || distanceMain > 0 ? 'loss' : 'profit'}>{formatDistance(distanceFast, 2)} / {formatDistance(distanceMain, 2)}</strong></div>
+              </div>
             </div>
-          </div>
+          ) : (
+            // ETH 显示双向阈值
+            <>
+              <div className="diagnostic-side-card">
+                <div className="diagnostic-side-title">做多阈值</div>
+                <div className="diagnostic-thresholds">
+                  <div><span>RSI Fast ≤</span><strong>{item?.thresholds?.long?.rsi_fast_max}</strong></div>
+                  <div><span>RSI Main ≤</span><strong>{item?.thresholds?.long?.rsi_main_max}</strong></div>
+                  <div><span>当前差值</span><strong className={longDistanceFast < 0 ? 'profit' : 'loss'}>{formatDistance(longDistanceFast, 2)} / {formatDistance(longDistanceMain, 2)}</strong></div>
+                </div>
+              </div>
+              <div className="diagnostic-side-card">
+                <div className="diagnostic-side-title">做空阈值</div>
+                <div className="diagnostic-thresholds">
+                  <div><span>RSI Fast ≥</span><strong>{item?.thresholds?.short?.rsi_fast_min}</strong></div>
+                  <div><span>RSI Main ≥</span><strong>{item?.thresholds?.short?.rsi_main_min}</strong></div>
+                  <div><span>当前差值</span><strong className={distanceFast > 0 || distanceMain > 0 ? 'loss' : 'profit'}>{formatDistance(distanceFast, 2)} / {formatDistance(distanceMain, 2)}</strong></div>
+                </div>
+              </div>
+            </>
+          )}
         </div>
       </details>
     </article>

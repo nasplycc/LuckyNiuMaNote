@@ -24,11 +24,11 @@
   },
   "STRATEGY": {
     "strategy": {
-      "name": "NFI Short-Only 反转策略",
-      "version": "2.0",
-      "description": "基于 NostalgiaForInfinity 思路的短线反转系统。当前实盘默认 short_only，重点捕捉下行趋势中的反弹衰竭后做空机会。",
+      "name": "NFI 双向交易策略 (SuperTrend AI 增强)",
+      "version": "3.0",
+      "description": "基于 NostalgiaForInfinity 思路的短线反转系统，集成 SuperTrend AI 市场状态识别。BTC 仅做空，ETH 双向交易。2026-04-10 优化：降低 RSI 阈值、收紧止损止盈、增加 SuperTrend 翻转信号。",
       "createdAt": "2026-02-22",
-      "updatedAt": "2026-04-04",
+      "updatedAt": "2026-04-10",
       "status": "active"
     },
     "markets": {
@@ -83,29 +83,36 @@
     ],
     "entryRules": {
       "long": [
-        "当前实盘默认关闭做多（trade_side=short_only）"
+        "ETH 支持双向交易，BTC 仅做空",
+        "EMA50 > EMA200 且价格高于 EMA200 下方容差 (0.92)",
+        "价格触及布林下轨附近或回踩至 EMA20 下方",
+        "RSI(4/14) 进入超卖区（BTC 默认 28/42，ETH 默认 26/40）",
+        "成交量通过过滤，且价格结构出现企稳确认",
+        "SuperTrend 翻转信号（分数≥45）可独立触发入场"
       ],
       "short": [
-        "EMA50 < EMA200 且价格低于 EMA200 上方容差",
+        "BTC 仅做空，ETH 双向交易",
+        "EMA50 < EMA200 且价格低于 EMA200 上方容差 (1.08)",
         "价格触及布林上轨附近或反弹至 EMA20 上方",
-        "RSI(4/14) 进入超买区（BTC 当前 75/60，ETH 当前 72/60）",
-        "成交量通过过滤，且价格结构出现回落确认"
+        "RSI(4/14) 进入超买区（BTC 默认 70/55，ETH 默认 68/53）",
+        "成交量通过过滤，且价格结构出现回落确认",
+        "SuperTrend 翻转信号（分数≥45）可独立触发入场"
       ]
     },
     "exitRules": {
-      "stopLoss": "ATR 止损：BTC 2.4x / ETH 2.8x",
-      "takeProfit": "ATR 止盈：BTC 4.0x / ETH 2.8x",
+      "stopLoss": "ATR 动态止损：BTC 2.0x / ETH 2.2x（按市场状态自适应调整）",
+      "takeProfit": "ATR 动态止盈：BTC 3.0x / ETH 2.8x（按市场状态自适应调整）",
       "trailingStop": "未启用（固定 ATR 出场）"
     },
     "positionSizing": {
       "maxLeverage": 3,
       "defaultLeverage": 2,
       "maxPositionUsd": 294,
-      "sizingMethod": "基于信心度的动态仓位"
+      "sizingMethod": "基于信心度的动态仓位（市场状态 + SuperTrend 翻转增强）"
     },
     "riskManagement": {
       "maxDailyDrawdown": "20%",
-      "stopLossPerTrade": "ATR 动态止损",
+      "stopLossPerTrade": "ATR 动态止损（按市场状态自适应：趋势 0.75x / 震荡 0.9x / 波动 1.0x）",
       "cooldownAfterLoss": "4 小时",
       "maxConcurrentPositions": 2
     },
@@ -114,8 +121,9 @@
       "targetReturn": "稳健复利优先",
       "maxAcceptableLoss": "100%（可归零）",
       "notes": [
-        "默认只做空，优先防守型趋势反转",
-        "全量可用数据回测（至 2026-02-24）：BTC +25.84%，ETH +46.47%"
+        "BTC 仅做空，ETH 双向交易",
+        "2026-04-10 优化：降低 RSI 阈值、收紧止损止盈、增加 SuperTrend 翻转信号",
+        "市场状态识别：trending/ranging/volatile 自适应调整参数"
       ]
     }
   },
@@ -249,7 +257,7 @@
       "tags": [
         "[策略, 系统, 文档]"
       ],
-      "content": "## 策略概述\n\n这是 **牛牛（Niu Niu）** 当前实盘使用的策略系统：\n\n**NostalgiaForInfinity（NFI）思路改造版 + short_only 执行模式**。\n\n> 目标：在控制回撤的前提下，捕捉下行趋势中的高质量反弹做空机会。\n\n## 当前模式\n\n- **交易方向**：short_only（默认只做空）\n- **交易标的**：BTC、ETH\n- **时间框架**：1小时\n- **最大杠杆**：3x\n- **默认杠杆**：2x\n\n## 核心逻辑\n\n### 指标组合\n\n| 指标 | 周期 | 用途 |\n|------|------|------|\n| EMA 快线 | 20 | 识别短期反弹 |\n| EMA 趋势线 | 50 | 过滤中期方向 |\n| EMA 长期线 | 200 | 大级别趋势锚点 |\n| RSI 快速 | 4 | 捕捉短线超买 |\n| RSI 主周期 | 14 | 确认反转强度 |\n| 布林带 | 20 | 判断反弹触顶区域 |\n| ATR | 14 | 计算止损止盈 |\n| Volume SMA | 30 | 成交量过滤 |\n\n### 入场条件（做空）\n\n1. 趋势过滤通过（EMA50 < EMA200，且价格位置满足方向约束）\n2. 价格触及布林上轨附近或反弹到 EMA20 上方\n3. RSI 进入超买区（BTC 当前 75/60，ETH 当前 72/60）\n4. 成交量过滤通过，且价格出现回落确认\n\n## 参数（当前实盘）\n\n### BTC\n- 止损：2.4 × ATR\n- 止盈：4.0 × ATR\n- RSI 空头阈值：75 / 60\n\n### ETH\n- 止损：2.8 × ATR\n- 止盈：2.8 × ATR\n- RSI 空头阈值：72 / 60\n\n### 统一风控\n- 亏损后冷却：4小时\n- 日回撤保护：20%\n- 最大仓位：$294\n\n## 回测快照\n\n基于 Hyperliquid 可用全量 1h 数据（截至 2026-02-24）：\n\n- BTC：**+25.84%**\n- ETH：**+46.47%**\n\n## 免责声明\n\n⚠️ 风险提示：\n- 加密货币交易高风险，可能归零\n- 过往表现不代表未来收益\n- 请只用可承受损失的资金参与\n\n---\n\n*最后更新：2026-02-24 by 牛牛 🐮*"
+      "content": "## 策略概述\n\n这是 **牛牛（Niu Niu）** 当前实盘使用的策略系统：\n\n**NostalgiaForInfinity（NFI）思路改造版 + short_only 执行模式**。\n\n> 目标：在控制回撤的前提下，捕捉下行趋势中的高质量反弹做空机会。\n\n## 当前模式\n\n- **交易方向**：short_only（默认只做空）\n- **交易标的**：BTC、ETH\n- **时间框架**：1小时\n- **最大杠杆**：3x\n- **默认杠杆**：2x\n\n## 核心逻辑\n\n### 指标组合\n\n| 指标 | 周期 | 用途 |\n|------|------|------|\n| EMA 快线 | 20 | 识别短期反弹 |\n| EMA 趋势线 | 50 | 过滤中期方向 |\n| EMA 长期线 | 200 | 大级别趋势锚点 |\n| RSI 快速 | 4 | 捕捉短线超买 |\n| RSI 主周期 | 14 | 确认反转强度 |\n| 布林带 | 20 | 判断反弹触顶区域 |\n| ATR | 14 | 计算止损止盈 |\n| Volume SMA | 30 | 成交量过滤 |\n\n### 入场条件（做空）\n\n1. 趋势过滤通过（EMA50 < EMA200，且价格位置满足方向约束）\n2. 价格触及布林上轨附近或反弹到 EMA20 上方\n3. RSI 进入超买区（BTC 默认 79/62，ETH 默认 75/62）\n4. 成交量过滤通过，且价格出现回落确认\n\n## 参数（当前实盘）\n\n### BTC\n- 止损：2.4 × ATR\n- 止盈：4.0 × ATR\n- RSI 空头阈值：79 / 62\n\n### ETH\n- 止损：2.8 × ATR\n- 止盈：2.8 × ATR\n- RSI 空头阈值：75 / 62\n\n### 统一风控\n- 亏损后冷却：4小时\n- 日回撤保护：20%\n- 最大仓位：$294\n\n## 回测快照\n\n基于 Hyperliquid 可用全量 1h 数据（截至 2026-02-24）：\n\n- BTC：**+25.84%**\n- ETH：**+46.47%**\n\n## 免责声明\n\n⚠️ 风险提示：\n- 加密货币交易高风险，可能归零\n- 过往表现不代表未来收益\n- 请只用可承受损失的资金参与\n\n---\n\n*最后更新：2026-02-24 by 牛牛 🐮*"
     },
     {
       "slug": "learn/ai-trading-rules",

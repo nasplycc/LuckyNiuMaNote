@@ -29,6 +29,12 @@ from notifier import TelegramNotifier
 from reconcile import reconcile_exchange_state
 from risk_guard import RiskGuard
 from state_store import StateStore
+from market_regime import (
+    detect_market_regime,
+    adapt_supertrend_multiplier,
+    score_trend_flip,
+    detect_supertrend,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = PROJECT_ROOT.parent
@@ -72,33 +78,54 @@ NFI_DEFAULTS = {
     "bb_period": 20,
     "bb_stddev": 2.0,
     "volume_sma_period": 30,
-    "rsi_fast_buy": 23.0,
-    "rsi_main_buy": 36.0,
-    "bb_touch_buffer": 1.01,
-    "ema_pullback_buffer": 0.985,
-    "regime_price_floor": 0.95,
-    "max_breakdown_pct": 0.10,
+    # === RSI 阈值下调：更容易触发信号 ===
+    "rsi_fast_buy": 28.0,  # 原 23.0 → 28.0 (更容易超卖触发)
+    "rsi_main_buy": 42.0,  # 原 36.0 → 42.0 (更容易超卖触发)
+    "rsi_fast_sell": 70.0,  # 原 75.0 → 70.0 (更容易超买触发)
+    "rsi_main_sell": 55.0,  # 原 60.0 → 55.0 (更容易超买触发)
+    # === 放宽布林带和价格条件 ===
+    "bb_touch_buffer": 1.02,  # 原 1.01 → 1.02 (更容易触及)
+    "ema_pullback_buffer": 0.99,  # 原 0.985 → 0.99 (更容易回踩)
+    "bb_reject_buffer": 0.98,  # 原 0.99 → 0.98 (更容易触及上轨)
+    "ema_bounce_buffer": 1.02,  # 原 1.015 → 1.02 (更容易反弹)
+    # === 放宽趋势和破位条件 ===
+    "regime_price_floor": 0.92,  # 原 0.95 → 0.92 (允许更深度回踩)
+    "regime_price_ceiling": 1.08,  # 原 1.05 → 1.08 (允许更高反弹)
+    "max_breakdown_pct": 0.15,  # 原 0.10 → 0.15 (允许更大破位)
+    "max_breakout_pct": 0.15,  # 原 0.10 → 0.15 (允许更大突破)
+    # === 降低成交量要求 ===
+    "min_volume_ratio": 0.35,  # 原 0.45 → 0.35 (更低成交量门槛)
+    # === 止损止盈调整：更激进 ===
+    "stop_loss_atr_mult": 2.0,  # 原 2.4 → 2.0 (更紧止损，更快出场)
+    "take_profit_atr_mult": 3.0,  # 原 4.0 → 3.0 (更容易止盈)
+    # === SuperTrend 参数：更敏感 ===
+    "supertrend_period": 10,
+    "supertrend_base_multiplier": 2.5,  # 原 3.0 → 2.5 (更敏感)
+    "min_trend_flip_score": 45,  # 原 55 → 45 (更容易触发翻转信号)
+    # === 其他 ===
     "enable_short": True,
-    "rsi_fast_sell": 75.0,
-    "rsi_main_sell": 60.0,
-    "bb_reject_buffer": 0.99,
-    "ema_bounce_buffer": 1.015,
-    "regime_price_ceiling": 1.05,
-    "max_breakout_pct": 0.10,
-    "min_volume_ratio": 0.45,
-    "stop_loss_atr_mult": 2.4,
-    "take_profit_atr_mult": 4.0,
+    "bb_period": 20,
+    "bb_stddev": 2.0,
+    "volume_sma_period": 30,
+}
+
+# Regime-adaptive stop loss/take profit multipliers - 更激进
+REGIME_SL_TP_ADJUSTMENTS = {
+    "trending": {"sl_mult": 0.75, "tp_mult": 1.0},   # 更紧止损 (0.85→0.75), 止盈不放大
+    "ranging": {"sl_mult": 0.9, "tp_mult": 0.85},    # 止损收紧 (1.1→0.9), 止盈更容易 (0.9→0.85)
+    "volatile": {"sl_mult": 1.0, "tp_mult": 0.7},    # 快速出场 (1.3→1.0), 止盈更保守 (0.8→0.7)
 }
 
 NFI_SYMBOL_OVERRIDES = {
     "ETH": {
-        "rsi_fast_buy": 21.0,
-        "rsi_main_buy": 34.0,
-        "rsi_fast_sell": 72.0,
-        "rsi_main_sell": 60.0,
-        "min_volume_ratio": 0.35,
-        "stop_loss_atr_mult": 2.8,
-        "take_profit_atr_mult": 2.8,
+        # ETH 波动更大，但也要降低门槛
+        "rsi_fast_buy": 26.0,  # 比 BTC 略低，但仍比原来宽松
+        "rsi_main_buy": 40.0,
+        "rsi_fast_sell": 68.0,
+        "rsi_main_sell": 53.0,
+        "min_volume_ratio": 0.30,  # ETH 成交量要求更低
+        "stop_loss_atr_mult": 2.2,  # 原 2.8 → 2.2 (更紧)
+        "take_profit_atr_mult": 2.8,  # 原 2.8 → 2.8 (保持，ETH 波动大)
     }
 }
 
@@ -782,6 +809,48 @@ class NostalgiaForInfinityTrader:
         if atr_now <= 0:
             return {"action": "HOLD", "reason": f"{symbol} ATR is zero"}
 
+        # ===== SuperTrend AI Adaptive: Market Regime Detection =====
+        regime_result = detect_market_regime(closes, highs, lows, volumes)
+        adapted_st_mult = adapt_supertrend_multiplier(regime_result.regime)
+        
+        # Calculate SuperTrend and detect trend flip
+        st_values, st_direction = detect_supertrend(
+            highs, lows, closes, multiplier=adapted_st_mult, period=int(params.get("supertrend_period", 10))
+        )
+        
+        # Detect trend flip (direction changed from previous bar)
+        supertrend_flip = False
+        flip_direction = None
+        if len(st_direction) >= 2 and i >= 1:
+            if st_direction[i] != st_direction[i-1] and st_direction[i] != 0:
+                supertrend_flip = True
+                flip_direction = "bullish" if st_direction[i] == 1 else "bearish"
+        
+        # Calculate Bollinger Band width for squeeze detection
+        bb_width = (bb_upper[i] - bb_lower[i]) / bb_lower[i] * 100 if bb_lower[i] > 0 else 0
+        
+        # Calculate volume ratio and price change for trend flip scoring
+        volume_ratio = volumes[i] / volume_sma[i] if volume_sma[i] > 0 else 1.0
+        price_change_pct = (closes[i] - closes[i-1]) / closes[i-1] * 100 if i > 0 and closes[i-1] > 0 else 0
+        atr_change_pct = (atr_now - atr_vals[i-1]) / atr_vals[i-1] * 100 if i > 0 and atr_vals[i-1] > 0 else 0
+        
+        # Score the trend flip (if flipped)
+        flip_score = 0.0
+        if supertrend_flip:
+            flip_score = score_trend_flip(
+                regime_result,
+                volume_ratio,
+                abs(price_change_pct),
+                bb_width,
+                abs(atr_change_pct)
+            )
+        
+        logger.info(
+            "%s Regime=%s, ST_mult=%.1f, BB_width=%.2f%%, Vol_ratio=%.2f, Flip=%s (%s), Score=%.0f",
+            symbol, regime_result.regime, adapted_st_mult, bb_width, volume_ratio,
+            "YES" if supertrend_flip else "NO", flip_direction or "-", flip_score if supertrend_flip else 0
+        )
+
         short_enabled = bool(params.get("enable_short", True))
         by_symbol = CONFIG.get("trade_side_by_symbol") or {}
         trade_side = str(by_symbol.get(symbol, CONFIG.get("trade_side", "both"))).lower()
@@ -803,6 +872,84 @@ class NostalgiaForInfinityTrader:
         stabilizing_short = closes[i] <= closes[i - 1] or rsi_fast[i] < rsi_fast[i - 1]
         short_ok = allow_short and short_enabled and regime_short and pullback_short and rsi_short and volume_ok and not_breakout and stabilizing_short
 
+        # ===== SuperTrend Flip as Independent Entry Signal =====
+        # Even if NFI conditions are not met, a high-score SuperTrend flip can trigger entry
+        min_flip_score = float(params.get("min_trend_flip_score", 55))
+        
+        if supertrend_flip and flip_score >= min_flip_score:
+            # SuperTrend flip detected with sufficient score - consider as independent signal
+            flip_side = "LONG" if flip_direction == "bullish" else "SHORT"
+            
+            # Additional filters for flip-based entry
+            flip_valid = True
+            flip_reasons = []
+            
+            # Filter 1: Regime should not be highly volatile (too risky)
+            if regime_result.regime == "volatile" and regime_result.confidence > 0.8:
+                flip_valid = False
+                flip_reasons.append("too_volatile")
+            
+            # Filter 2: Volume - 降低要求 (原 0.8 → 0.6)
+            if volume_ratio < 0.6:
+                flip_valid = False
+                flip_reasons.append("low_volume")
+            
+            # Filter 3: Price change - 降低要求 (原 0.5% → 0.3%)
+            if abs(price_change_pct) < 0.3:
+                flip_valid = False
+                flip_reasons.append("weak_momentum")
+            
+            if flip_valid:
+                # Calculate position size based on flip score
+                flip_confidence = 0.5 + (flip_score / 100.0) * 0.3  # 0.5 to 0.8 based on score
+                position_size = self._calc_position_size(flip_confidence)
+                
+                if position_size >= CONFIG["min_order_value"]:
+                    # Use regime-adaptive SL/TP
+                    regime_adjustment = REGIME_SL_TP_ADJUSTMENTS.get(regime_result.regime, {"sl_mult": 1.0, "tp_mult": 1.0})
+                    sl_mult = float(params["stop_loss_atr_mult"]) * regime_adjustment["sl_mult"]
+                    tp_mult = float(params["take_profit_atr_mult"]) * regime_adjustment["tp_mult"]
+                    
+                    if flip_side == "LONG":
+                        stop_loss = price - atr_now * sl_mult
+                        take_profit = price + atr_now * tp_mult
+                        action = "BUY"
+                    else:
+                        stop_loss = price + atr_now * sl_mult
+                        take_profit = price - atr_now * tp_mult
+                        action = "SELL"
+                    
+                    fee_check = self._check_profit_after_fees(position_size, price, take_profit)
+                    if fee_check["valid"]:
+                        logger.info(
+                            "%s SuperTrend flip entry: side=%s, score=%.0f, confidence=%.2f, size=%.2f",
+                            symbol, flip_side, flip_score, flip_confidence, position_size
+                        )
+                        return {
+                            "action": action,
+                            "symbol": symbol,
+                            "confidence": flip_confidence,
+                            "size": position_size,
+                            "entry_price": price,
+                            "stop_loss": stop_loss,
+                            "take_profit": take_profit,
+                            "atr": atr_now,
+                            "fees": fee_check,
+                            "regime": regime_result.regime,
+                            "regime_confidence": regime_result.confidence,
+                            "supertrend_multiplier": adapted_st_mult,
+                            "market_score": market_score,
+                            "flip_score": flip_score,
+                            "signal_type": "supertrend_flip",
+                            "reason": f"{symbol} SuperTrend {flip_side} flip, Score={flip_score:.0f}, Regime={regime_result.regime}, SL={sl_mult:.2f}xATR TP={tp_mult:.2f}xATR",
+                        }
+            
+            logger.info(
+                "%s SuperTrend flip rejected: score=%.0f, valid=%s, reasons=%s",
+                symbol, flip_score, flip_valid, ','.join(flip_reasons) if flip_reasons else 'filters_passed_but_size_too_small'
+            )
+        
+        # ===== Original NFI Entry Logic =====
         if not (long_ok or short_ok):
             reasons = []
             if not regime_ok and not regime_short:
@@ -827,18 +974,66 @@ class NostalgiaForInfinityTrader:
         elif short_ok:
             side = "SHORT"
 
-        confidence = self._calc_confidence_long(price, bb_lower[i], ema_trend[i], ema_long[i], rsi_fast[i], rsi_main[i], volumes[i], volume_sma[i]) if side == "LONG" else self._calc_confidence_short(price, bb_upper[i], ema_trend[i], ema_long[i], rsi_fast[i], rsi_main[i], volumes[i], volume_sma[i])
+        # Calculate base NFI confidence
+        base_confidence = self._calc_confidence_long(price, bb_lower[i], ema_trend[i], ema_long[i], rsi_fast[i], rsi_main[i], volumes[i], volume_sma[i]) if side == "LONG" else self._calc_confidence_short(price, bb_upper[i], ema_trend[i], ema_long[i], rsi_fast[i], rsi_main[i], volumes[i], volume_sma[i])
+        
+        # ===== Enhance confidence with market regime and SuperTrend flip =====
+        confidence = base_confidence
+        
+        # Bonus 1: Market regime quality (up to +0.15)
+        if regime_result.regime == "trending":
+            confidence += 0.15 * regime_result.confidence
+        elif regime_result.regime == "volatile":
+            confidence += 0.05  # Small bonus for volatile (opportunity but risky)
+        # Ranging: no bonus
+        
+        # Bonus 2: SuperTrend flip with high score (up to +0.20)
+        if supertrend_flip and flip_score >= float(params.get("min_trend_flip_score", 55)):
+            # Check if flip direction aligns with NFI signal
+            if (side == "LONG" and flip_direction == "bullish") or (side == "SHORT" and flip_direction == "bearish"):
+                flip_bonus = 0.10 + (flip_score / 100.0) * 0.10  # 0.10 to 0.20 based on score
+                confidence += flip_bonus
+                logger.info(
+                    "%s SuperTrend flip bonus: +% .3f (score=%.0f, aligned=%s)",
+                    symbol, flip_bonus, flip_score, flip_direction
+                )
+        
+        # Bonus 3: High market score - 降低门槛 (原 70/60 → 60/50)
+        if market_score >= 60:
+            confidence += 0.10
+        elif market_score >= 50:
+            confidence += 0.05
+        
+        # Cap confidence at 1.0
+        confidence = min(confidence, 1.0)
+        
+        logger.info(
+            "%s Confidence: base=%.2f -> final=%.2f (regime=%s, flip=%s, market_score=%.0f)",
+            symbol, base_confidence, confidence, regime_result.regime,
+            "YES" if supertrend_flip else "NO", market_score
+        )
         position_size = self._calc_position_size(confidence)
         if position_size < CONFIG["min_order_value"]:
             return {"action": "HOLD", "reason": f"{symbol} position too small"}
 
+        # Apply regime-adaptive stop loss and take profit
+        regime_adjustment = REGIME_SL_TP_ADJUSTMENTS.get(regime_result.regime, {"sl_mult": 1.0, "tp_mult": 1.0})
+        sl_mult = float(params["stop_loss_atr_mult"]) * regime_adjustment["sl_mult"]
+        tp_mult = float(params["take_profit_atr_mult"]) * regime_adjustment["tp_mult"]
+        
+        logger.info(
+            "%s Regime adjustment: %s -> SL_mult=%.2f (base %.2f x adj %.2f), TP_mult=%.2f (base %.2f x adj %.2f)",
+            symbol, regime_result.regime, sl_mult, float(params["stop_loss_atr_mult"]), regime_adjustment["sl_mult"],
+            tp_mult, float(params["take_profit_atr_mult"]), regime_adjustment["tp_mult"]
+        )
+        
         if side == "LONG":
-            stop_loss = price - atr_now * float(params["stop_loss_atr_mult"])
-            take_profit = price + atr_now * float(params["take_profit_atr_mult"])
+            stop_loss = price - atr_now * sl_mult
+            take_profit = price + atr_now * tp_mult
             action = "BUY"
         else:
-            stop_loss = price + atr_now * float(params["stop_loss_atr_mult"])
-            take_profit = price - atr_now * float(params["take_profit_atr_mult"])
+            stop_loss = price + atr_now * sl_mult
+            take_profit = price - atr_now * tp_mult
             action = "SELL"
 
         fee_check = self._check_profit_after_fees(position_size, price, take_profit)
@@ -855,7 +1050,11 @@ class NostalgiaForInfinityTrader:
             "take_profit": take_profit,
             "atr": atr_now,
             "fees": fee_check,
-            "reason": f"{symbol} NFI {side} entry, RSI({rsi_fast[i]:.1f}/{rsi_main[i]:.1f}), SL={params['stop_loss_atr_mult']}xATR TP={params['take_profit_atr_mult']}xATR",
+            "regime": regime_result.regime,
+            "regime_confidence": regime_result.confidence,
+            "supertrend_multiplier": adapted_st_mult,
+            "market_score": market_score,
+            "reason": f"{symbol} NFI {side} entry, RSI({rsi_fast[i]:.1f}/{rsi_main[i]:.1f}), Regime={regime_result.regime}, SL={sl_mult:.2f}xATR TP={tp_mult:.2f}xATR, Score={market_score:.0f}",
         }
 
     def get_account_state(self) -> Dict:

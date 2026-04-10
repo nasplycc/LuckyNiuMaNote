@@ -133,7 +133,9 @@ export default function HomePage({ data }) {
         <div className="position-card">
           <div className="position-header">
             <h3>📊 实时持仓</h3>
-            <span className="live-badge">● LIVE</span>
+            <span className="live-badge" style={{ color: positionData?.botStatus?.monitor_only ? 'var(--warning)' : 'var(--accent)' }}>
+              ● {positionData?.botStatus?.monitor_only ? 'MONITOR' : 'LIVE'}
+            </span>
           </div>
           {positionData.positions?.length ? (
             positionData.positions.map((pos) => (
@@ -161,7 +163,9 @@ export default function HomePage({ data }) {
         <div>
           <div className="position-header" style={{ margin: '20px 0 12px' }}>
             <h3 style={{ margin: 0 }}>🤖🐮 量化机器人军团</h3>
-            <span className="live-badge">● LIVE</span>
+            <span className="live-badge" style={{ color: tradersData?.botStatus?.monitor_only ? 'var(--warning)' : 'var(--accent)' }}>
+              ● {tradersData?.botStatus?.monitor_only ? 'MONITOR' : 'LIVE'}
+            </span>
           </div>
           <div className="bots-grid">
             {tradersData.traders.map((bot) => <BotCard key={bot.id} bot={bot} />)}

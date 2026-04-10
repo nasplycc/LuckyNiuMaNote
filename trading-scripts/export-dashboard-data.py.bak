@@ -496,9 +496,9 @@ def diagnose_symbol(symbol: str) -> Dict[str, Any]:
         'long_setup': {'ready': len(long_missing) == 0, 'missing': long_missing},
         'short_setup': {'ready': len(short_missing) == 0, 'missing': short_missing},
         'human_summary': (
-            f"{symbol} 当前未触发。"
-            + (f"做多还差：{','.join(long_missing) or '无'}；" if symbol != 'BTC' else "")
-            + f"做空还差：{','.join(short_missing) or '无'}；"
+            f"{symbol} 当前未触发。做多还差: {','.join(long_missing) or '无'}；"
+            f"做空还差: {','.join(short_missing) or '无'}；"
+            f"当前 RSI={rsi_fast_now:.1f}/{rsi_main_now:.1f}，量能={volume_now:.2f}，阈值≥{volume_threshold:.2f}。"
         )
     }
 
@@ -567,7 +567,7 @@ def build_overview(ctx: ExportContext) -> Dict[str, Any]:
         "total_return_pct": 0.0,
         "open_positions_count": len(asset_positions),
         "open_orders_count": open_orders_count,
-        "bot_mode": "SAFE_MODE" if risk_guard_state.get("safe_mode") else ("MONITOR_ONLY" if risk_guard_state.get("trader_mode") != "live" else "LIVE"),
+        "bot_mode": "SAFE_MODE" if risk_guard_state.get("safe_mode") else "LIVE",
         "strategy_name": "nostalgia_for_infinity",
         "updated_at": ctx.now_iso,
     }
