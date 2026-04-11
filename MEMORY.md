@@ -303,12 +303,81 @@ if selfScore > minTotalScore:
 #   5. 止损压缩: SL = normal_SL * pbSLratio (0.65)
 ```
 
+### 统一入场决策
+```python
+# 三种入场信号类型:
+#   normalDipSig: 标准委员会投票信号
+#   reEntryLong: Re-Entry v3信号
+#   pullbackLongSig: Pullback v2信号
+
+# 入场优先级: normal > RE > PB
+# Entry ID命名:
+#   "LONG": 标准信号
+#   "RE Long": Re-Entry信号
+#   "PB Long": Pullback信号
+```
+
+### Score-集成Trail计算
+```python
+# 反向Score影响Trail收紧
+counterScoreNorm = peakRaw / maxScore  # Long仓的反向是peak
+ownScoreNorm = dipRaw / maxScore       # Long仓的自己是dip
+
+scoreFactor = 1.0 - counterScoreNorm * trailTightenRate + ownScoreNorm * trailLoosenRate
+scoreFactor = max(0.15, min(1.5, scoreFactor))
+
+effTrailPct = baseTrailPct * scoreFactor
+```
+
+### Breakeven三阶段保护
+```python
+# Phase 2 (盈利0.5%): SL移至entryPrice
+# Phase 3 (盈利1.0%): SL锁定0.3%盈利
+if curProfit >= bePhase3pct (1.0%):
+    slPrice = entryPrice * (1 + bePhase3lock/100)  # 锁定0.3%
+elif curProfit >= bePhase2pct (0.5%):
+    slPrice = entryPrice  # 保本
+```
+
+### Webhook JSON格式
+```json
+// 开多
+{"action":"open_long","ticker":"BTC","price":"84000","score":"12","voters":"6"}
+// 平多
+{"action":"close_long","ticker":"BTC","price":"85000"}
+// 开空
+{"action":"open_short","ticker":"ETH","price":"3200","score":"15","voters":"7"}
+// 平空
+{"action":"close_short","ticker":"ETH","price":"3100"}
+```
+
 ### 出场优先级
 ```python
 # 1. 反向信号 → 关闭所有同方向仓位 + 开反向仓
 # 2. Trail触发 → 动态追踪止盈
 # 3. SL触发 → 固定止损
 # 4. 模式关闭: "Sadece Long"模式收到Peak信号 → 关闭Long（不开Short）
+```
+
+### 状态变量
+```python
+# 持仓状态
+posDir: 0=无仓, 1=Long, -1=Short
+entryPrice: 入场价
+highestSinceEntry: 入场后最高价
+lowestSinceEntry: 入场后最低价
+trailStopPrice: Trail止损价
+trailActive: Trail是否激活
+slPrice: 固定止损价
+barsSinceEntry: 入场后bar数
+
+# Re-Entry状态
+lastExitDir: 上次退出方向
+barsSinceExit: 退出后bar数
+lastHighAfterExit: 退出后最高价
+lastLowAfterExit: 退出后最低价
+reEntryCount: 重入场次数
+reExitOccurred: 是否发生过退出
 ```
 
 ### 成交量倍数逻辑
