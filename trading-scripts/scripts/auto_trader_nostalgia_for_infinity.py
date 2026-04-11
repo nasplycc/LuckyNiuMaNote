@@ -813,6 +813,51 @@ class NostalgiaForInfinityTrader:
         regime_result = detect_market_regime(closes, highs, lows, volumes)
         adapted_st_mult = adapt_supertrend_multiplier(regime_result.regime)
         
+        # ===== Calculate Market Score (综合评分 0-100) =====
+        # 基于regime质量、趋势强度、成交量、波动性等因子
+        market_score = 0.0
+        
+        # Factor 1: Regime quality (max 40 points)
+        if regime_result.regime == "trending":
+            market_score += 40 * regime_result.confidence
+        elif regime_result.regime == "ranging":
+            market_score += 15  # 中性评分
+        else:  # volatile
+            market_score += 20  # 波动市场有一定机会但风险高
+        
+        # Factor 2: ADX trend strength (max 20 points)
+        if regime_result.adx_value > 25:
+            market_score += 20
+        elif regime_result.adx_value > 20:
+            market_score += 15
+        elif regime_result.adx_value > 15:
+            market_score += 10
+        
+        # Factor 3: Volume vs SMA (max 20 points)
+        volume_ratio = volumes[i] / volume_sma[i] if volume_sma[i] > 0 else 1.0
+        if volume_ratio > 1.5:
+            market_score += 20
+        elif volume_ratio > 1.2:
+            market_score += 15
+        elif volume_ratio > 1.0:
+            market_score += 10
+        
+        # Factor 4: Volatility ratio (max 10 points)
+        if 0.8 <= regime_result.volatility_ratio <= 1.3:
+            market_score += 10  # 正常波动
+        elif regime_result.volatility_ratio > 1.5:
+            market_score += 5   # 高波动但有机会
+        
+        # Factor 5: RSI zone (max 10 points)
+        if regime_result.rsi_zone == "oversold":
+            market_score += 10  # 超卖有反弹机会
+        elif regime_result.rsi_zone == "overbought":
+            market_score += 5   # 超买也有做空机会
+        else:
+            market_score += 7   # 中性
+        
+        market_score = min(market_score, 100.0)
+        
         # Calculate SuperTrend and detect trend flip
         st_values, st_direction = detect_supertrend(
             highs, lows, closes, multiplier=adapted_st_mult, period=int(params.get("supertrend_period", 10))
@@ -829,8 +874,8 @@ class NostalgiaForInfinityTrader:
         # Calculate Bollinger Band width for squeeze detection
         bb_width = (bb_upper[i] - bb_lower[i]) / bb_lower[i] * 100 if bb_lower[i] > 0 else 0
         
-        # Calculate volume ratio and price change for trend flip scoring
-        volume_ratio = volumes[i] / volume_sma[i] if volume_sma[i] > 0 else 1.0
+        # Calculate volume ratio and price change for trend flip scoring (reuse from market_score)
+        # volume_ratio already calculated above
         price_change_pct = (closes[i] - closes[i-1]) / closes[i-1] * 100 if i > 0 and closes[i-1] > 0 else 0
         atr_change_pct = (atr_now - atr_vals[i-1]) / atr_vals[i-1] * 100 if i > 0 and atr_vals[i-1] > 0 else 0
         
@@ -846,8 +891,8 @@ class NostalgiaForInfinityTrader:
             )
         
         logger.info(
-            "%s Regime=%s, ST_mult=%.1f, BB_width=%.2f%%, Vol_ratio=%.2f, Flip=%s (%s), Score=%.0f",
-            symbol, regime_result.regime, adapted_st_mult, bb_width, volume_ratio,
+            "%s Regime=%s, ST_mult=%.1f, MarketScore=%.0f, BB_width=%.2f%%, Vol_ratio=%.2f, Flip=%s (%s), FlipScore=%.0f",
+            symbol, regime_result.regime, adapted_st_mult, market_score, bb_width, volume_ratio,
             "YES" if supertrend_flip else "NO", flip_direction or "-", flip_score if supertrend_flip else 0
         )
 
