@@ -117,15 +117,32 @@ REGIME_SL_TP_ADJUSTMENTS = {
 }
 
 NFI_SYMBOL_OVERRIDES = {
+    "BTC": {
+        # BTC 流动性更好，趋势更明确，双向交易策略
+        # === 做多条件（趋势向上时回调入场）===
+        "rsi_fast_buy": 38.0,  # BTC比ETH更稳定，RSI要求略高
+        "rsi_main_buy": 50.0,  # 主RSI中性偏下即可
+        "min_volume_ratio": 0.25,  # BTC流动性好，要求略高于ETH
+        "bb_touch_buffer": 1.04,  # 更宽松的布林带触及
+        "ema_pullback_buffer": 0.98,  # 更深的回踩允许
+        # === 做空条件（趋势向下时反弹入场）===
+        "rsi_fast_sell": 58.0,  # RSI偏高即可做空
+        "rsi_main_sell": 48.0,  # 主RSI中性偏上
+        "bb_reject_buffer": 0.96,  # 更宽松的上轨触及
+        "ema_bounce_buffer": 1.04,  # 更高的反弹允许
+        # === 止损止盈 ===
+        "stop_loss_atr_mult": 2.0,  # 较紧止损（BTC波动相对小）
+        "take_profit_atr_mult": 3.5,  # 较大止盈（趋势明确时多拿）
+    },
     "ETH": {
         # ETH 波动更大，参数更宽松
-        "rsi_fast_buy": 32.0,  # 原 26.0 → 32.0
-        "rsi_main_buy": 46.0,  # 原 40.0 → 46.0
-        "rsi_fast_sell": 62.0,  # 原 68.0 → 62.0
-        "rsi_main_sell": 50.0,  # 原 53.0 → 50.0
-        "min_volume_ratio": 0.18,  # 原 0.30 → 0.18
-        "stop_loss_atr_mult": 2.2,  # 原 2.8 → 2.2 (更紧)
-        "take_profit_atr_mult": 2.8,  # 原 2.8 → 2.8 (保持，ETH 波动大)
+        "rsi_fast_buy": 32.0,  # ETH波动大，RSI要求更宽松
+        "rsi_main_buy": 46.0,  # 主RSI更低即可入场
+        "rsi_fast_sell": 62.0,  # ETH超买阈值更高
+        "rsi_main_sell": 50.0,  # 主RSI中性
+        "min_volume_ratio": 0.18,  # ETH成交量要求最低
+        "stop_loss_atr_mult": 2.2,  # ETH波动大，止损略宽
+        "take_profit_atr_mult": 2.8,  # ETH止盈保守
     }
 }
 
