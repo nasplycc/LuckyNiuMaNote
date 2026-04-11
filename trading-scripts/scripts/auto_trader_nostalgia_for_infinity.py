@@ -35,6 +35,10 @@ from market_regime import (
     score_trend_flip,
     detect_supertrend,
 )
+from y_committee import (
+    y_committee_vote,
+    format_committee_report,
+)
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WORKSPACE_ROOT = PROJECT_ROOT.parent
@@ -1102,6 +1106,49 @@ class NostalgiaForInfinityTrader:
         if not fee_check["valid"]:
             return {"action": "HOLD", "reason": f"{symbol} {fee_check['reason']}"}
 
+        # ===== Y(4.0) 委员会投票验证 =====
+        # Y委员会投票作为信号确认机制
+        y_vote = y_committee_vote(
+            rsi_fast=rsi_fast[i],
+            stoch_k=50.0,  # 简化，暂无Stoch数据
+            stoch_d=50.0,
+            prev_stoch_k=50.0,
+            prev_stoch_d=50.0,
+            price=price,
+            bb_upper=bb_upper[i],
+            bb_lower=bb_lower[i],
+            bb_mid=(bb_upper[i] + bb_lower[i]) / 2,
+            cci=cci_value if 'cci_value' in dir() else 0.0,  # 需计算CCI
+            williams_r=williams_r if 'williams_r' in dir() else -50.0,
+            mfi=mfi if 'mfi' in dir() else 50.0,
+            adx=regime_result.adx_value,
+            plus_di=plus_di if 'plus_di' in dir() else 20.0,
+            minus_di=minus_di if 'minus_di' in dir() else 20.0,
+            prices_history=closes[-14:] if len(closes) >= 14 else closes,
+            rsi_history=rsi_main[-14:] if len(rsi_main) >= 14 else rsi_main,
+            volume_ratio=volume_ratio,
+            min_active_components=5,
+            min_total_score=10,
+        )
+        
+        # Y委员会投票通过 → 增加置信度
+        if y_vote.passed and y_vote.direction == side:
+            confidence += 0.15
+            logger.info("%s Y(4.0) 委员会投票通过: 总分=%.1f, 方向匹配=%s", symbol, y_vote.final_score, y_vote.direction)
+        elif y_vote.passed and y_vote.direction != side:
+            # 方向不匹配 → 降低置信度
+            confidence -= 0.10
+            logger.warning("%s Y(4.0) 委员会投票方向不匹配: NFI=%s vs Y=%s", symbol, side, y_vote.direction)
+        else:
+            # Y委员会未通过 → 轻微降低置信度
+            confidence -= 0.05
+            logger.info("%s Y(4.0) 委员会投票未通过: 总分=%.1f, 激活=%d/8", symbol, y_vote.final_score, y_vote.active_count)
+        
+        confidence = max(0.3, min(confidence, 1.0))  # 保证最低置信度
+        position_size = self._calc_position_size(confidence)
+        if position_size < CONFIG["min_order_value"]:
+            return {"action": "HOLD", "reason": f"{symbol} position too small after Y vote"}
+
         return {
             "action": action,
             "symbol": symbol,
@@ -1116,7 +1163,10 @@ class NostalgiaForInfinityTrader:
             "regime_confidence": regime_result.confidence,
             "supertrend_multiplier": adapted_st_mult,
             "market_score": market_score,
-            "reason": f"{symbol} NFI {side} entry, RSI({rsi_fast[i]:.1f}/{rsi_main[i]:.1f}), Regime={regime_result.regime}, SL={sl_mult:.2f}xATR TP={tp_mult:.2f}xATR, Score={market_score:.0f}",
+            "y_committee_score": y_vote.final_score,
+            "y_committee_passed": y_vote.passed,
+            "signal_type": "nfi_y_committee",
+            "reason": f"{symbol} NFI {side} + Y(4.0) 验证, RSI({rsi_fast[i]:.1f}/{rsi_main[i]:.1f}), Y得分={y_vote.final_score:.1f}, Regime={regime_result.regime}, SL={sl_mult:.2f}xATR",
         }
 
     def get_account_state(self) -> Dict:
