@@ -412,18 +412,25 @@ def get_klines(symbol: str, interval: str = '1h', limit: int = 240) -> List[Dict
 
 
 def nfi_params_for_symbol(symbol: str) -> Dict[str, Any]:
+    # BTC 双向交易策略参数
     base = {
         'ema_fast': 20, 'ema_trend': 50, 'ema_long': 200,
         'rsi_fast': 4, 'rsi_main': 14, 'bb_period': 20, 'bb_stddev': 2.0,
-        'volume_sma_period': 30, 'rsi_fast_buy': 23.0, 'rsi_main_buy': 36.0,
-        'rsi_fast_sell': 75.0, 'rsi_main_sell': 60.0, 'min_volume_ratio': 0.45,
-        'bb_touch_buffer': 1.01, 'ema_pullback_buffer': 0.985,
-        'regime_price_floor': 0.95, 'regime_price_ceiling': 1.05,
-        'bb_reject_buffer': 0.99, 'ema_bounce_buffer': 1.015,
-        'max_breakdown_pct': 0.10, 'max_breakout_pct': 0.10,
+        'volume_sma_period': 30,
+        # BTC 做多阈值（已放宽）
+        'rsi_fast_buy': 38.0, 'rsi_main_buy': 50.0,
+        # BTC 做空阈值（已放宽）
+        'rsi_fast_sell': 58.0, 'rsi_main_sell': 48.0,
+        # BTC 成交量要求
+        'min_volume_ratio': 0.25,
+        'bb_touch_buffer': 1.04, 'ema_pullback_buffer': 0.98,
+        'regime_price_floor': 0.92, 'regime_price_ceiling': 1.08,
+        'bb_reject_buffer': 0.96, 'ema_bounce_buffer': 1.04,
+        'max_breakdown_pct': 0.15, 'max_breakout_pct': 0.15,
     }
     if symbol == 'ETH':
-        base.update({'rsi_fast_buy': 21.0, 'rsi_main_buy': 34.0, 'rsi_fast_sell': 72.0, 'rsi_main_sell': 60.0, 'min_volume_ratio': 0.35})
+        # ETH 更宽松的阈值
+        base.update({'rsi_fast_buy': 32.0, 'rsi_main_buy': 46.0, 'rsi_fast_sell': 62.0, 'rsi_main_sell': 50.0, 'min_volume_ratio': 0.18})
     return base
 
 
@@ -497,7 +504,7 @@ def diagnose_symbol(symbol: str) -> Dict[str, Any]:
         'short_setup': {'ready': len(short_missing) == 0, 'missing': short_missing},
         'human_summary': (
             f"{symbol} 当前未触发。"
-            + (f"做多还差：{','.join(long_missing) or '无'}；" if symbol != 'BTC' else "")
+            + f"做多还差：{','.join(long_missing) or '无'}；"
             + f"做空还差：{','.join(short_missing) or '无'}；"
         )
     }
