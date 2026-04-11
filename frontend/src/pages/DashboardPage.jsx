@@ -187,24 +187,51 @@ function PositionOverview({ positions }) {
   );
 }
 
+function YCommitteeBadge({ component }) {
+  const toneClass = component.direction === 'LONG' ? 'profit' : component.direction === 'SHORT' ? 'loss' : 'neutral';
+  const activeClass = component.active ? 'active' : 'inactive';
+  
+  return (
+    <div className={`y-committee-badge ${activeClass} ${toneClass}`}>
+      <div className="y-badge-header">
+        <span className="y-badge-name">{component.name}</span>
+        <span className={`y-badge-score ${toneClass}`}>{component.score}/3</span>
+      </div>
+      <div className="y-badge-reason">{component.reason}</div>
+      <div className={`y-badge-direction ${toneClass}`}>{component.direction}</div>
+    </div>
+  );
+}
+
 function DiagnosticCard({ item }) {
   const shortMissing = item?.short_setup?.missing || [];
-  const ready = Boolean(item?.short_setup?.ready);
+  const longMissing = item?.long_setup?.missing || [];
+  const ready = Boolean(item?.short_setup?.ready) || Boolean(item?.long_setup?.ready);
   const distanceFast = Number(item?.distance_to_short_rsi?.rsi_fast || 0);
   const distanceMain = Number(item?.distance_to_short_rsi?.rsi_main || 0);
   const volumeDistance = Number(item?.distance_to_volume_threshold || 0);
-  
-  // BTC 和 ETH 都是双向交易
-  const isBTCOnlyShort = false; // BTC已改为both双向交易
   const longDistanceFast = Number(item?.distance_to_long_rsi?.rsi_fast || 0);
   const longDistanceMain = Number(item?.distance_to_long_rsi?.rsi_main || 0);
+  
+  // Y(4.0) 委员会数据
+  const yCommittee = item?.y_committee || {};
+  const yComponents = yCommittee?.components || [];
+  const yPassed = yCommittee?.passed || false;
+  const yDirection = yCommittee?.direction || 'NEUTRAL';
+  const yTotalScore = yCommittee?.total_score || 0;
+  const yFinalScore = yCommittee?.final_score || 0;
+  const yActiveCount = yCommittee?.active_count || 0;
+  const yLongSignals = yCommittee?.long_signals || 0;
+  const yShortSignals = yCommittee?.short_signals || 0;
+  const yVolumeMultiplier = yCommittee?.volume_multiplier || 1.0;
+  const marketScore = item?.market_score || 0;
 
   return (
     <article className="diagnostic-card diagnostic-card-refined">
       <div className="diagnostic-card-header">
         <div>
           <div className="coin">{item.symbol}</div>
-          <div className="diagnostic-sub">{item.timeframe} 策略诊断</div>
+          <div className="diagnostic-sub">{item.timeframe} NFI + Y(4.0) 诊断</div>
         </div>
         <div className="diagnostic-header-right">
           <div className="diagnostic-price">{formatMoney(item.price, 2)}</div>
@@ -212,13 +239,64 @@ function DiagnosticCard({ item }) {
         </div>
       </div>
 
+      {/* 市场评分 */}
+      <div className="market-score-box">
+        <div className="market-score-label">市场综合评分</div>
+        <div className={`market-score-value ${marketScore >= 60 ? 'good' : marketScore >= 40 ? 'medium' : 'low'}`}>{marketScore}/100</div>
+      </div>
+
+      {/* Y(4.0) 委员会投票结果 */}
+      <div className="y-committee-summary-box">
+        <div className="y-summary-header">
+          <span className="y-summary-title">Y(4.0) 委员会投票</span>
+          <span className={`y-passed-badge ${yPassed ? 'passed' : 'not-passed'}`}>{yPassed ? '✅ 通过' : '❌ 未通过'}</span>
+        </div>
+        <div className="y-summary-stats">
+          <div className="y-stat">
+            <span>激活组件</span>
+            <strong>{yActiveCount}/8</strong>
+          </div>
+          <div className="y-stat">
+            <span>总分</span>
+            <strong>{yTotalScore}/24</strong>
+          </div>
+          <div className="y-stat">
+            <span>最终得分</span>
+            <strong className={yFinalScore >= 10 ? 'profit' : 'loss'}>{yFinalScore.toFixed(1)}</strong>
+          </div>
+          <div className="y-stat">
+            <span>成交量倍数</span>
+            <strong>{yVolumeMultiplier.toFixed(2)}x</strong>
+          </div>
+          <div className="y-stat">
+            <span>方向</span>
+            <strong className={yDirection === 'LONG' ? 'profit' : yDirection === 'SHORT' ? 'loss' : 'neutral'}>{yDirection}</strong>
+          </div>
+          <div className="y-stat">
+            <span>做多信号</span>
+            <strong className="profit">{yLongSignals}</strong>
+          </div>
+          <div className="y-stat">
+            <span>做空信号</span>
+            <strong className="loss">{yShortSignals}</strong>
+          </div>
+        </div>
+      </div>
+
+      {/* Y 委员会各组件投票明细 */}
+      <details className="y-committee-details">
+        <summary>查看 Y(4.0) 各组件投票明细</summary>
+        <div className="y-committee-grid">
+          {yComponents.map((comp) => <YCommitteeBadge component={comp} key={comp.name} />)}
+        </div>
+      </details>
+
       <div className="diagnostic-summary-box">
         <div className="diagnostic-summary-title">结论</div>
         <div className="diagnostic-summary">{item.human_summary || '暂无诊断说明'}</div>
       </div>
 
       <div className="diagnostic-focus-grid">
-        {/* BTC 和 ETH 都显示双向差值 */}
         <div className="diagnostic-focus-card">
           <span>做多 RSI Fast 差值</span>
           <strong className={longDistanceFast < 0 ? 'profit' : 'loss'}>{formatDistance(longDistanceFast, 2)}</strong>
@@ -234,7 +312,9 @@ function DiagnosticCard({ item }) {
       </div>
 
       <div className="diagnostic-tags diagnostic-tags-refined">
-        {shortMissing.length ? shortMissing.map((tag) => <span className="diagnostic-tag" key={`short-${item.symbol}-${tag}`}>{tag}</span>) : <span className="diagnostic-tag ok">ready</span>}
+        {longMissing.length ? longMissing.map((tag) => <span className="diagnostic-tag long" key={`long-${item.symbol}-${tag}`}>做多缺{tag}</span>) : null}
+        {shortMissing.length ? shortMissing.map((tag) => <span className="diagnostic-tag" key={`short-${item.symbol}-${tag}`}>做空缺{tag}</span>) : null}
+        {!longMissing.length && !shortMissing.length ? <span className="diagnostic-tag ok">ready</span> : null}
       </div>
 
       <details className="diagnostic-details">
@@ -245,12 +325,19 @@ function DiagnosticCard({ item }) {
             <div className="diagnostic-metrics">
               <div><span>RSI Fast</span><strong>{item.rsi_fast}</strong></div>
               <div><span>RSI Main</span><strong>{item.rsi_main}</strong></div>
+              <div><span>Stoch K</span><strong>{item.stoch_k}</strong></div>
+              <div><span>Stoch D</span><strong>{item.stoch_d}</strong></div>
+              <div><span>CCI</span><strong>{item.cci}</strong></div>
+              <div><span>Williams %R</span><strong>{item.williams_r}</strong></div>
+              <div><span>MFI</span><strong>{item.mfi}</strong></div>
+              <div><span>ADX</span><strong>{item.adx}</strong></div>
+              <div><span>+DI</span><strong>{item.plus_di}</strong></div>
+              <div><span>-DI</span><strong>{item.minus_di}</strong></div>
               <div><span>当前量能</span><strong>{Number(item.volume_now || 0).toFixed(2)}</strong></div>
               <div><span>量能阈值</span><strong>{Number(item.volume_threshold || 0).toFixed(2)}</strong></div>
               <div><span>量能/均量</span><strong>{item.volume_ratio_to_sma != null ? `${(Number(item.volume_ratio_to_sma) * 100).toFixed(2)}%` : '暂无'}</strong></div>
             </div>
           </div>
-          {/* BTC 和 ETH 都显示双向阈值 */}
           <div className="diagnostic-side-card">
             <div className="diagnostic-side-title">做多阈值</div>
             <div className="diagnostic-thresholds">

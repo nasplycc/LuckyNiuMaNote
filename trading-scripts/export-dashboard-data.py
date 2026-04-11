@@ -434,26 +434,177 @@ def nfi_params_for_symbol(symbol: str) -> Dict[str, Any]:
     return base
 
 
+def stochastic(highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Tuple[List[float], List[float]]:
+    """Stochastic K and D calculation"""
+    k_vals = []
+    for i in range(len(closes)):
+        if i < period - 1:
+            k_vals.append(50.0)
+            continue
+        highest = max(highs[i - period + 1:i + 1])
+        lowest = min(lows[i - period + 1:i + 1])
+        if highest == lowest:
+            k_vals.append(50.0)
+        else:
+            k_vals.append(100.0 * (closes[i] - lowest) / (highest - lowest))
+    # D is SMA of K
+    d_vals = sma(k_vals, 3)
+    return k_vals, d_vals
+
+
+def cci(highs: List[float], lows: List[float], closes: List[float], period: int = 20) -> List[float]:
+    """CCI (Commodity Channel Index) calculation"""
+    tp = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
+    tp_sma = sma(tp, period)
+    tp_std = rolling_std(tp, period)
+    cci_vals = []
+    for i in range(len(tp)):
+        if tp_std[i] == 0:
+            cci_vals.append(0.0)
+        else:
+            cci_vals.append((tp[i] - tp_sma[i]) / (0.015 * tp_std[i]))
+    return cci_vals
+
+
+def williams_r(highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> List[float]:
+    """Williams %R calculation"""
+    wr_vals = []
+    for i in range(len(closes)):
+        if i < period - 1:
+            wr_vals.append(-50.0)
+            continue
+        highest = max(highs[i - period + 1:i + 1])
+        lowest = min(lows[i - period + 1:i + 1])
+        if highest == lowest:
+            wr_vals.append(-50.0)
+        else:
+            wr_vals.append(-100.0 * (highest - closes[i]) / (highest - lowest))
+    return wr_vals
+
+
+def mfi(highs: List[float], lows: List[float], closes: List[float], volumes: List[float], period: int = 14) -> List[float]:
+    """MFI (Money Flow Index) calculation"""
+    tp = [(h + l + c) / 3 for h, l, c in zip(highs, lows, closes)]
+    mf = [t * v for t, v in zip(tp, volumes)]
+    mfi_vals = [50.0] * len(closes)
+    if len(closes) < period:
+        return mfi_vals
+    for i in range(period, len(closes)):
+        pos_flow = 0.0
+        neg_flow = 0.0
+        for j in range(i - period + 1, i + 1):
+            if tp[j] > tp[j - 1]:
+                pos_flow += mf[j]
+            elif tp[j] < tp[j - 1]:
+                neg_flow += mf[j]
+        if neg_flow == 0:
+            mfi_vals[i] = 100.0
+        else:
+            mf_ratio = pos_flow / neg_flow
+            mfi_vals[i] = 100.0 - (100.0 / (1.0 + mf_ratio))
+    return mfi_vals
+
+
+def adx_di(highs: List[float], lows: List[float], closes: List[float], period: int = 14) -> Tuple[List[float], List[float], List[float]]:
+    """ADX, +DI, -DI calculation"""
+    plus_dm = [0.0] * len(closes)
+    minus_dm = [0.0] * len(closes)
+    tr = [0.0] * len(closes)
+    
+    for i in range(1, len(closes)):
+        up_move = highs[i] - highs[i - 1]
+        down_move = lows[i - 1] - lows[i]
+        plus_dm[i] = up_move if up_move > down_move and up_move > 0 else 0.0
+        minus_dm[i] = down_move if down_move > up_move and down_move > 0 else 0.0
+        tr[i] = max(highs[i] - lows[i], abs(highs[i] - closes[i - 1]), abs(lows[i] - closes[i - 1]))
+    
+    # Smoothed values using Wilder smoothing
+    atr_vals = [tr[0]]
+    plus_di_vals = [0.0]
+    minus_di_vals = [0.0]
+    
+    # First period: simple sum
+    atr_vals.extend([sum(tr[1:period]) / period] * (period - 1))
+    plus_di_smooth = sum(plus_dm[1:period]) / period
+    minus_di_smooth = sum(minus_dm[1:period]) / period
+    plus_di_vals.extend([100.0 * plus_di_smooth / atr_vals[-1] if atr_vals[-1] else 0.0] * (period - 1))
+    minus_di_vals.extend([100.0 * minus_di_smooth / atr_vals[-1] if atr_vals[-1] else 0.0] * (period - 1))
+    
+    # Wilder smoothing for rest
+    for i in range(period, len(closes)):
+        atr_vals.append((atr_vals[-1] * (period - 1) + tr[i]) / period)
+        plus_di_smooth = (plus_di_smooth * (period - 1) + plus_dm[i]) / period
+        minus_di_smooth = (minus_di_smooth * (period - 1) + minus_dm[i]) / period
+        plus_di_vals.append(100.0 * plus_di_smooth / atr_vals[i] if atr_vals[i] else 0.0)
+        minus_di_vals.append(100.0 * minus_di_smooth / atr_vals[i] if atr_vals[i] else 0.0)
+    
+    # DX and ADX
+    dx_vals = []
+    for i in range(len(plus_di_vals)):
+        di_sum = plus_di_vals[i] + minus_di_vals[i]
+        if di_sum == 0:
+            dx_vals.append(0.0)
+        else:
+            dx_vals.append(100.0 * abs(plus_di_vals[i] - minus_di_vals[i]) / di_sum)
+    
+    # ADX = smoothed DX
+    adx_vals = [0.0] * len(dx_vals)
+    if len(dx_vals) > period * 2:
+        adx_vals[period * 2 - 1] = sum(dx_vals[period:period * 2]) / period
+        for i in range(period * 2, len(dx_vals)):
+            adx_vals[i] = (adx_vals[i - 1] * (period - 1) + dx_vals[i]) / period
+    
+    return adx_vals, plus_di_vals, minus_di_vals
+
+
 def diagnose_symbol(symbol: str) -> Dict[str, Any]:
     params = nfi_params_for_symbol(symbol)
     klines = get_klines(symbol, interval='1h', limit=240)
     if len(klines) < params['ema_long'] + 5:
         return {'symbol': symbol, 'status': 'insufficient_data'}
     closes = [k['close'] for k in klines]
+    highs = [k['high'] for k in klines]
+    lows = [k['low'] for k in klines]
     volumes = [k['volume'] for k in klines]
     ema_fast_vals = ema(closes, int(params['ema_fast']))
     ema_trend_vals = ema(closes, int(params['ema_trend']))
     ema_long_vals = ema(closes, int(params['ema_long']))
     rsi_fast_vals = rsi_wilder(closes, int(params['rsi_fast']))
     rsi_main_vals = rsi_wilder(closes, int(params['rsi_main']))
-    _, bb_upper_vals, bb_lower_vals = bollinger_bands(closes, int(params['bb_period']), float(params['bb_stddev']))
+    bb_mid_vals, bb_upper_vals, bb_lower_vals = bollinger_bands(closes, int(params['bb_period']), float(params['bb_stddev']))
     volume_sma_vals = sma(volumes, int(params['volume_sma_period']))
+    
+    # Y(4.0) 委员会指标计算
+    stoch_k_vals, stoch_d_vals = stochastic(highs, lows, closes, 14)
+    cci_vals = cci(highs, lows, closes, 20)
+    wr_vals = williams_r(highs, lows, closes, 14)
+    mfi_vals = mfi(highs, lows, closes, volumes, 14)
+    adx_vals, plus_di_vals, minus_di_vals = adx_di(highs, lows, closes, 14)
+    
     i = len(closes) - 1
     price = closes[i]
     volume_now = volumes[i]
     volume_sma_now = volume_sma_vals[i]
     rsi_fast_now = rsi_fast_vals[i]
     rsi_main_now = rsi_main_vals[i]
+    
+    # Y(4.0) 委员会各组件当前值
+    stoch_k_now = stoch_k_vals[i]
+    stoch_d_now = stoch_d_vals[i]
+    prev_stoch_k = stoch_k_vals[i - 1] if i > 0 else stoch_k_now
+    prev_stoch_d = stoch_d_vals[i - 1] if i > 0 else stoch_d_now
+    bb_upper_now = bb_upper_vals[i]
+    bb_lower_now = bb_lower_vals[i]
+    bb_mid_now = bb_mid_vals[i]
+    cci_now = cci_vals[i]
+    wr_now = wr_vals[i]
+    mfi_now = mfi_vals[i]
+    adx_now = adx_vals[i]
+    plus_di_now = plus_di_vals[i]
+    minus_di_now = minus_di_vals[i]
+    volume_ratio = volume_now / volume_sma_now if volume_sma_now else 1.0
+    
+    # NFI 基础判定
     regime_long = ema_trend_vals[i] > ema_long_vals[i] and price > ema_long_vals[i] * float(params['regime_price_floor'])
     pullback_long = price <= bb_lower_vals[i] * float(params['bb_touch_buffer']) or price <= ema_fast_vals[i] * float(params['ema_pullback_buffer'])
     rsi_long = rsi_fast_now <= float(params['rsi_fast_buy']) and rsi_main_now <= float(params['rsi_main_buy'])
@@ -476,16 +627,185 @@ def diagnose_symbol(symbol: str) -> Dict[str, Any]:
     if not volume_ok: short_missing.append('volume')
     if not stabilizing_short: short_missing.append('stabilizing')
     volume_threshold = volume_sma_now * float(params['min_volume_ratio']) if volume_sma_now > 0 else 0.0
+    
+    # 构建 Y(4.0) 委员会各组件评分详情
+    y_components = []
+    
+    # RSI 组件
+    if rsi_fast_now < 20:
+        y_components.append({'name': 'RSI', 'score': 3, 'active': True, 'reason': f'深度超卖 ({rsi_fast_now:.1f} < 20)', 'direction': 'LONG'})
+    elif rsi_fast_now < 25:
+        y_components.append({'name': 'RSI', 'score': 2, 'active': True, 'reason': f'中度超卖 ({rsi_fast_now:.1f} < 25)', 'direction': 'LONG'})
+    elif rsi_fast_now < 30:
+        y_components.append({'name': 'RSI', 'score': 1, 'active': True, 'reason': f'轻度超卖 ({rsi_fast_now:.1f} < 30)', 'direction': 'LONG'})
+    elif rsi_fast_now > 80:
+        y_components.append({'name': 'RSI', 'score': 3, 'active': True, 'reason': f'深度超买 ({rsi_fast_now:.1f} > 80)', 'direction': 'SHORT'})
+    elif rsi_fast_now > 75:
+        y_components.append({'name': 'RSI', 'score': 2, 'active': True, 'reason': f'中度超买 ({rsi_fast_now:.1f} > 75)', 'direction': 'SHORT'})
+    elif rsi_fast_now > 70:
+        y_components.append({'name': 'RSI', 'score': 1, 'active': True, 'reason': f'轻度超买 ({rsi_fast_now:.1f} > 70)', 'direction': 'SHORT'})
+    else:
+        y_components.append({'name': 'RSI', 'score': 0, 'active': False, 'reason': f'中性区域 ({rsi_fast_now:.1f})', 'direction': 'NEUTRAL'})
+    
+    # Stoch 组件
+    stoch_bullish_cross = stoch_k_now > stoch_d_now and prev_stoch_k <= prev_stoch_d
+    stoch_bearish_cross = stoch_k_now < stoch_d_now and prev_stoch_k >= prev_stoch_d
+    if stoch_k_now < 20 and stoch_bullish_cross:
+        y_components.append({'name': 'Stoch', 'score': 3, 'active': True, 'reason': f'超卖区金叉 (K={stoch_k_now:.1f}, D={stoch_d_now:.1f})', 'direction': 'LONG'})
+    elif stoch_k_now < 20:
+        y_components.append({'name': 'Stoch', 'score': 2, 'active': True, 'reason': f'超卖区 (K={stoch_k_now:.1f} < 20)', 'direction': 'LONG'})
+    elif stoch_k_now > 80 and stoch_bearish_cross:
+        y_components.append({'name': 'Stoch', 'score': 3, 'active': True, 'reason': f'超买区死叉 (K={stoch_k_now:.1f}, D={stoch_d_now:.1f})', 'direction': 'SHORT'})
+    elif stoch_k_now > 80:
+        y_components.append({'name': 'Stoch', 'score': 2, 'active': True, 'reason': f'超买区 (K={stoch_k_now:.1f} > 80)', 'direction': 'SHORT'})
+    elif stoch_bullish_cross and stoch_k_now < 30:
+        y_components.append({'name': 'Stoch', 'score': 1, 'active': True, 'reason': f'低位金叉 (K={stoch_k_now:.1f})', 'direction': 'LONG'})
+    elif stoch_bearish_cross and stoch_k_now > 70:
+        y_components.append({'name': 'Stoch', 'score': 1, 'active': True, 'reason': f'高位死叉 (K={stoch_k_now:.1f})', 'direction': 'SHORT'})
+    else:
+        y_components.append({'name': 'Stoch', 'score': 0, 'active': False, 'reason': f'中性 (K={stoch_k_now:.1f}, D={stoch_d_now:.1f})', 'direction': 'NEUTRAL'})
+    
+    # BB 组件
+    if price < bb_lower_now * 0.98:
+        y_components.append({'name': 'BB', 'score': 3, 'active': True, 'reason': f'显著跌破下轨', 'direction': 'LONG'})
+    elif price < bb_lower_now:
+        y_components.append({'name': 'BB', 'score': 2, 'active': True, 'reason': f'跌破下轨', 'direction': 'LONG'})
+    elif price <= bb_lower_now * 1.01:
+        y_components.append({'name': 'BB', 'score': 1, 'active': True, 'reason': f'触及下轨', 'direction': 'LONG'})
+    elif price > bb_upper_now * 1.02:
+        y_components.append({'name': 'BB', 'score': 3, 'active': True, 'reason': f'显著突破上轨', 'direction': 'SHORT'})
+    elif price > bb_upper_now:
+        y_components.append({'name': 'BB', 'score': 2, 'active': True, 'reason': f'突破上轨', 'direction': 'SHORT'})
+    elif price >= bb_upper_now * 0.99:
+        y_components.append({'name': 'BB', 'score': 1, 'active': True, 'reason': f'触及上轨', 'direction': 'SHORT'})
+    else:
+        y_components.append({'name': 'BB', 'score': 0, 'active': False, 'reason': f'布林带内', 'direction': 'NEUTRAL'})
+    
+    # CCI 组件
+    if cci_now < -200:
+        y_components.append({'name': 'CCI', 'score': 3, 'active': True, 'reason': f'深度超卖 (CCI={cci_now:.1f})', 'direction': 'LONG'})
+    elif cci_now < -150:
+        y_components.append({'name': 'CCI', 'score': 2, 'active': True, 'reason': f'中度超卖 (CCI={cci_now:.1f})', 'direction': 'LONG'})
+    elif cci_now < -100:
+        y_components.append({'name': 'CCI', 'score': 1, 'active': True, 'reason': f'轻度超卖 (CCI={cci_now:.1f})', 'direction': 'LONG'})
+    elif cci_now > 200:
+        y_components.append({'name': 'CCI', 'score': 3, 'active': True, 'reason': f'深度超买 (CCI={cci_now:.1f})', 'direction': 'SHORT'})
+    elif cci_now > 150:
+        y_components.append({'name': 'CCI', 'score': 2, 'active': True, 'reason': f'中度超买 (CCI={cci_now:.1f})', 'direction': 'SHORT'})
+    elif cci_now > 100:
+        y_components.append({'name': 'CCI', 'score': 1, 'active': True, 'reason': f'轻度超买 (CCI={cci_now:.1f})', 'direction': 'SHORT'})
+    else:
+        y_components.append({'name': 'CCI', 'score': 0, 'active': False, 'reason': f'中性区域 (CCI={cci_now:.1f})', 'direction': 'NEUTRAL'})
+    
+    # Williams %R 组件
+    if wr_now < -90:
+        y_components.append({'name': 'Williams%R', 'score': 3, 'active': True, 'reason': f'深度超卖 (WR={wr_now:.1f})', 'direction': 'LONG'})
+    elif wr_now < -85:
+        y_components.append({'name': 'Williams%R', 'score': 2, 'active': True, 'reason': f'中度超卖 (WR={wr_now:.1f})', 'direction': 'LONG'})
+    elif wr_now < -80:
+        y_components.append({'name': 'Williams%R', 'score': 1, 'active': True, 'reason': f'轻度超卖 (WR={wr_now:.1f})', 'direction': 'LONG'})
+    elif wr_now > -10:
+        y_components.append({'name': 'Williams%R', 'score': 3, 'active': True, 'reason': f'深度超买 (WR={wr_now:.1f})', 'direction': 'SHORT'})
+    elif wr_now > -15:
+        y_components.append({'name': 'Williams%R', 'score': 2, 'active': True, 'reason': f'中度超买 (WR={wr_now:.1f})', 'direction': 'SHORT'})
+    elif wr_now > -20:
+        y_components.append({'name': 'Williams%R', 'score': 1, 'active': True, 'reason': f'轻度超买 (WR={wr_now:.1f})', 'direction': 'SHORT'})
+    else:
+        y_components.append({'name': 'Williams%R', 'score': 0, 'active': False, 'reason': f'中性区域 (WR={wr_now:.1f})', 'direction': 'NEUTRAL'})
+    
+    # MFI 组件
+    if mfi_now < 10:
+        y_components.append({'name': 'MFI', 'score': 3, 'active': True, 'reason': f'深度资金流出 (MFI={mfi_now:.1f})', 'direction': 'LONG'})
+    elif mfi_now < 20:
+        y_components.append({'name': 'MFI', 'score': 2, 'active': True, 'reason': f'中度资金流出 (MFI={mfi_now:.1f})', 'direction': 'LONG'})
+    elif mfi_now < 30:
+        y_components.append({'name': 'MFI', 'score': 1, 'active': True, 'reason': f'轻度资金流出 (MFI={mfi_now:.1f})', 'direction': 'LONG'})
+    elif mfi_now > 90:
+        y_components.append({'name': 'MFI', 'score': 3, 'active': True, 'reason': f'深度资金流入 (MFI={mfi_now:.1f})', 'direction': 'SHORT'})
+    elif mfi_now > 80:
+        y_components.append({'name': 'MFI', 'score': 2, 'active': True, 'reason': f'中度资金流入 (MFI={mfi_now:.1f})', 'direction': 'SHORT'})
+    elif mfi_now > 70:
+        y_components.append({'name': 'MFI', 'score': 1, 'active': True, 'reason': f'轻度资金流入 (MFI={mfi_now:.1f})', 'direction': 'SHORT'})
+    else:
+        y_components.append({'name': 'MFI', 'score': 0, 'active': False, 'reason': f'中性资金流 (MFI={mfi_now:.1f})', 'direction': 'NEUTRAL'})
+    
+    # ADX/DI 组件
+    adx_direction = 'BULLISH' if plus_di_now > minus_di_now else 'BEARISH'
+    if adx_now > 40:
+        y_components.append({'name': 'ADX/DI', 'score': 3, 'active': True, 'reason': f'强趋势 ({adx_direction}, ADX={adx_now:.1f})', 'direction': adx_direction})
+    elif adx_now > 25:
+        y_components.append({'name': 'ADX/DI', 'score': 2, 'active': True, 'reason': f'中等趋势 ({adx_direction}, ADX={adx_now:.1f})', 'direction': adx_direction})
+    elif adx_now > 20:
+        y_components.append({'name': 'ADX/DI', 'score': 1, 'active': True, 'reason': f'弱趋势 ({adx_direction}, ADX={adx_now:.1f})', 'direction': adx_direction})
+    else:
+        y_components.append({'name': 'ADX/DI', 'score': 0, 'active': False, 'reason': f'无明确趋势 (ADX={adx_now:.1f})', 'direction': 'NEUTRAL'})
+    
+    # Divergence 组件（简化版：基于RSI和价格对比）
+    lookback = 14
+    if len(closes) >= lookback and len(rsi_fast_vals) >= lookback:
+        recent_prices = closes[-lookback:]
+        recent_rsi = rsi_fast_vals[-lookback:]
+        price_low_idx = min(range(len(recent_prices)), key=lambda idx: recent_prices[idx])
+        rsi_low_idx = min(range(len(recent_rsi)), key=lambda idx: recent_rsi[idx])
+        price_high_idx = max(range(len(recent_prices)), key=lambda idx: recent_prices[idx])
+        rsi_high_idx = max(range(len(recent_rsi)), key=lambda idx: recent_rsi[idx])
+        bullish_div = price_low_idx > rsi_low_idx  # 价格新低，RSI未新低
+        bearish_div = price_high_idx > rsi_high_idx  # 价格新高，RSI未新高
+        if bullish_div:
+            y_components.append({'name': 'Divergence', 'score': 2, 'active': True, 'reason': f'看涨背离 (价格底≠RSI底)', 'direction': 'LONG'})
+        elif bearish_div:
+            y_components.append({'name': 'Divergence', 'score': 2, 'active': True, 'reason': f'看跌背离 (价格顶≠RSI顶)', 'direction': 'SHORT'})
+        else:
+            y_components.append({'name': 'Divergence', 'score': 0, 'active': False, 'reason': f'无背离', 'direction': 'NEUTRAL'})
+    else:
+        y_components.append({'name': 'Divergence', 'score': 0, 'active': False, 'reason': '数据不足', 'direction': 'NEUTRAL'})
+    
+    # 计算 Y 委员会总分和判定
+    y_total_score = sum(c['score'] for c in y_components)
+    y_active_count = sum(1 for c in y_components if c['active'])
+    y_long_signals = sum(1 for c in y_components if c['active'] and c['direction'] == 'LONG')
+    y_short_signals = sum(1 for c in y_components if c['active'] and c['direction'] == 'SHORT')
+    y_direction = 'LONG' if y_long_signals > y_short_signals else 'SHORT' if y_short_signals > y_long_signals else 'NEUTRAL'
+    
+    # 成交量倍数
+    y_volume_multiplier = 1.0
+    if volume_ratio > 1.5:
+        y_volume_multiplier = 1.3
+    elif volume_ratio > 1.2:
+        y_volume_multiplier = 1.15
+    elif volume_ratio > 1.0:
+        y_volume_multiplier = 1.05
+    y_final_score = y_total_score * y_volume_multiplier
+    
+    # Y 委员会通过条件：至少5/8组件激活 + 总分≥10 + 有明确方向
+    y_passed = y_active_count >= 5 and y_final_score >= 10 and y_direction != 'NEUTRAL'
+    
+    # market_score 计算（综合评分 0-100）
+    regime_score = 25 if regime_long or regime_short else 0
+    adx_score = 20 if adx_now > 25 else 10 if adx_now > 20 else 0
+    volume_score = 25 if volume_ok else 15 if volume_ratio > 0.8 else 0
+    volatility_score = 15 if abs(cci_now) > 100 else 10 if abs(cci_now) > 50 else 0
+    rsi_zone_score = 15 if rsi_fast_now < 30 or rsi_fast_now > 70 else 0
+    market_score = min(100, regime_score + adx_score + volume_score + volatility_score + rsi_zone_score)
+    
     return {
         'symbol': symbol,
         'timeframe': '1h',
         'price': round(price, 6),
         'rsi_fast': round(rsi_fast_now, 2),
         'rsi_main': round(rsi_main_now, 2),
+        'stoch_k': round(stoch_k_now, 2),
+        'stoch_d': round(stoch_d_now, 2),
+        'cci': round(cci_now, 2),
+        'williams_r': round(wr_now, 2),
+        'mfi': round(mfi_now, 2),
+        'adx': round(adx_now, 2),
+        'plus_di': round(plus_di_now, 2),
+        'minus_di': round(minus_di_now, 2),
         'volume_now': round(volume_now, 6),
         'volume_sma_30': round(volume_sma_now, 6),
         'volume_threshold': round(volume_threshold, 6),
-        'volume_ratio_to_sma': round((volume_now / volume_sma_now), 4) if volume_sma_now else None,
+        'volume_ratio_to_sma': round(volume_ratio, 4) if volume_sma_now else None,
         'thresholds': {
             'long': {'rsi_fast_max': params['rsi_fast_buy'], 'rsi_main_max': params['rsi_main_buy']},
             'short': {'rsi_fast_min': params['rsi_fast_sell'], 'rsi_main_min': params['rsi_main_sell']},
@@ -502,10 +822,23 @@ def diagnose_symbol(symbol: str) -> Dict[str, Any]:
         'distance_to_volume_threshold': round(volume_threshold - volume_now, 6),
         'long_setup': {'ready': len(long_missing) == 0, 'missing': long_missing},
         'short_setup': {'ready': len(short_missing) == 0, 'missing': short_missing},
+        'y_committee': {
+            'components': y_components,
+            'total_score': y_total_score,
+            'max_score': 24,
+            'final_score': round(y_final_score, 2),
+            'active_count': y_active_count,
+            'passed': y_passed,
+            'direction': y_direction,
+            'volume_multiplier': round(y_volume_multiplier, 2),
+            'long_signals': y_long_signals,
+            'short_signals': y_short_signals,
+            'summary': f"激活 {y_active_count}/8，总分 {y_total_score}/24（最终 {y_final_score:.1f}），方向 {y_direction}，{'✅ 通过' if y_passed else '❌ 未通过'}"
+        },
+        'market_score': market_score,
         'human_summary': (
-            f"{symbol} 当前未触发。"
-            + f"做多还差：{','.join(long_missing) or '无'}；"
-            + f"做空还差：{','.join(short_missing) or '无'}；"
+            f"{symbol} NFI: 做多还差 {','.join(long_missing) or '无'}；做空还差 {','.join(short_missing) or '无'}；"
+            + f"Y(4.0): 激活{y_active_count}/8，{y_total_score}分，{'通过' if y_passed else '未通过'}"
         )
     }
 

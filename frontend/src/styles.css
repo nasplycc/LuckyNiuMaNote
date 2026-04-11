@@ -1867,6 +1867,187 @@ footer {
   background: rgba(0, 255, 159, 0.08);
 }
 
+.diagnostic-tag.long {
+  border-color: rgba(0, 212, 255, 0.25);
+  color: var(--cyber-blue);
+  background: rgba(0, 212, 255, 0.08);
+}
+
+/* ===== Y(4.0) 委员会投票样式 ===== */
+.market-score-box {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(255,255,255,0.03);
+}
+.market-score-label {
+  color: var(--text-muted);
+  font-size: 0.78rem;
+}
+.market-score-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-weight: 700;
+  font-size: 1.1rem;
+}
+.market-score-value.good {
+  color: var(--accent);
+}
+.market-score-value.medium {
+  color: #f5b942;
+}
+.market-score-value.low {
+  color: var(--cyber-pink);
+}
+
+.y-committee-summary-box {
+  border-radius: 14px;
+  border: 1px solid rgba(191, 0, 255, 0.18);
+  background: linear-gradient(135deg, rgba(191, 0, 255, 0.08), rgba(0, 212, 255, 0.04));
+  padding: 14px;
+  display: grid;
+  gap: 10px;
+}
+.y-summary-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 10px;
+}
+.y-summary-title {
+  font-weight: 700;
+  color: var(--cyber-purple);
+  font-size: 0.9rem;
+}
+.y-passed-badge {
+  border-radius: 999px;
+  padding: 5px 12px;
+  font-size: 0.76rem;
+  border: 1px solid var(--border);
+  font-weight: 700;
+}
+.y-passed-badge.passed {
+  color: var(--accent);
+  border-color: rgba(0,255,159,0.35);
+  background: rgba(0,255,159,0.12);
+}
+.y-passed-badge.not-passed {
+  color: var(--cyber-pink);
+  border-color: rgba(255,0,128,0.35);
+  background: rgba(255,0,128,0.12);
+}
+.y-summary-stats {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+.y-stat {
+  border: 1px solid rgba(255,255,255,0.05);
+  border-radius: 10px;
+  padding: 8px 10px;
+  display: grid;
+  gap: 4px;
+  background: rgba(255,255,255,0.02);
+}
+.y-stat span {
+  color: var(--text-muted);
+  font-size: 0.72rem;
+}
+.y-stat strong {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.95rem;
+}
+.y-committee-details {
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 10px;
+}
+.y-committee-details summary {
+  cursor: pointer;
+  color: var(--cyber-purple);
+  font-size: 0.85rem;
+}
+.y-committee-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 12px;
+}
+.y-committee-badge {
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  padding: 10px;
+  display: grid;
+  gap: 6px;
+  background: rgba(255,255,255,0.02);
+}
+.y-committee-badge.active {
+  border-color: rgba(255,255,255,0.08);
+  background: rgba(255,255,255,0.04);
+}
+.y-committee-badge.inactive {
+  opacity: 0.6;
+}
+.y-badge-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.y-badge-name {
+  font-weight: 700;
+  font-size: 0.82rem;
+  color: var(--text-primary);
+}
+.y-badge-score {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 0.85rem;
+  font-weight: 700;
+}
+.y-badge-score.profit {
+  color: var(--accent);
+}
+.y-badge-score.loss {
+  color: var(--cyber-pink);
+}
+.y-badge-score.neutral {
+  color: var(--text-muted);
+}
+.y-badge-reason {
+  color: var(--text-secondary);
+  font-size: 0.72rem;
+  line-height: 1.4;
+}
+.y-badge-direction {
+  font-size: 0.76rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 6px;
+  display: inline-block;
+  width: fit-content;
+}
+.y-badge-direction.profit {
+  color: var(--accent);
+  background: rgba(0,255,159,0.08);
+}
+.y-badge-direction.loss {
+  color: var(--cyber-pink);
+  background: rgba(255,0,128,0.08);
+}
+.y-badge-direction.neutral {
+  color: var(--text-muted);
+  background: rgba(255,255,255,0.04);
+}
+
+@media (max-width: 900px) {
+  .y-summary-stats,
+  .y-committee-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
 @media (max-width: 900px) {
   .site-header-top,
   .brand-wrap,
