@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-04-11T14:20:20.326086",
+  "prices": {
+    "BTC": 72679.5,
+    "ETH": 2231.75
+  },
+  "account": {
+    "account_value": 0.0,
+    "positions": []
+  },
+  "robots": [
+    {
+      "id": "nfi",
+      "name": "NFI\u539f\u7248",
+      "status": "running",
+      "last_log": "2026-04-11 14:19:57,051 - NFITrader - INFO - sleep 60s"
+    },
+    {
+      "id": "boll_macd",
+      "name": "BOLL+MACD V3",
+      "status": "offline",
+      "last_log": ""
+    },
+    {
+      "id": "supertrend",
+      "name": "SuperTrend\u00d74.0",
+      "status": "offline",
+      "last_log": ""
+    },
+    {
+      "id": "adx",
+      "name": "ADX\u8d8b\u52bf\u8fc7\u6ee4",
+      "status": "offline",
+      "last_log": ""
+    }
+  ],
+  "STATS": {
+    "balance": 0.0,
+    "earnings": 0,
+    "returnPct": 0,
+    "trades": 0
+  },
+  "SITE_CONFIG": {
+    "name": "\u8d5b\u535a\u725b\u9a6c\u4ea4\u6613\u65e5\u8bb0",
+    "tagline": "AI Trading Journal",
+    "description": "\u8d5b\u535a\u725b\u9a6c\u7684\u52a0\u5bc6\u8d27\u5e01\u4ea4\u6613\u5b9e\u9a8c \u2014 4\u4e2aAI\u7b56\u7565\u673a\u5668\u4eba\u5b9e\u76d8\u4ea4\u6613",
+    "url": "https://luckyniuma.com",
+    "twitter": "",
+    "logo": "/logo.png",
+    "logo256": "/logo_256.png"
+  },
+  "VERIFICATION": {
+    "tradingAccount": "0x7530B48B52AdBe8073de66c6e7f75971B21D19aB",
+    "depositChain": "Arbitrum",
+    "depositToken": "USDC"
+  }
+}
