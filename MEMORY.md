@@ -232,6 +232,85 @@ if nfi_signal_triggered:
 # 看跌背离: 价格新高 + RSI未新高 + RSI>50
 ```
 
+### 总分计算逻辑
+```python
+# 做多总分 (dip)
+dipRaw = rsiDipPts + stDipPts + bbDipPts + cciDipPts + wrDipPts + mfiDipPts + adxDipPts + divDipPts
+# 做空总分 (peak)
+peakRaw = rsiPeakPts + stPeakPts + bbPeakPts + cciPeakPts + wrPeakPts + mfiPeakPts + adxPeakPts + divPeakPts
+
+# 激活组件计数
+dipVoters = sum(1 for pts in [rsiDipPts, stDipPts, bbDipPts, cciDipPts, wrDipPts, mfiDipPts, adxDipPts, divDipPts] if pts >= 1)
+peakVoters = sum(1 for pts in [rsiPeakPts, stPeakPts, bbPeakPts, cciPeakPts, wrPeakPts, mfiPeakPts, adxPeakPts, divPeakPts] if pts >= 1)
+
+# 成交量倍数调整
+dipScoreEff = dipRaw * volMultiplier
+peakScoreEff = peakRaw * volMultiplier
+
+maxScore = 24  # 8组件 × 3分
+```
+
+### ATR集成Trail计算
+```python
+# ATR动态调整Trail参数
+trailATR = ATR(14)
+trailATRavg = SMA(trailATR, 50)
+atrScale = trailATR / trailATRavg  # 当前ATR相对平均ATR的比例
+atrClamped = max(0.5, min(2.0, atrScale))  # 限制在0.5-2.0之间
+atrFactor = 1.0 + (atrClamped - 1.0) * trailATRweight  # ATR权重混合
+
+# 基础Trail参数 × ATR因子
+baseTrailAct = trailActivation * atrFactor  # Trail激活盈利
+baseTrailPct = trailPercent * atrFactor    # Trail回撤百分比
+```
+
+### ATR权重影响
+- `trailATRweight = 0.0`: Trail完全基于原始参数，不考虑ATR
+- `trailATRweight = 1.0`: Trail完全跟随ATR波动
+- 推荐: `0.3` (30% ATR权重)
+
+### Score动态Trail
+```python
+# Score收紧: 当反向score增加，Trail收紧
+# Score放宽: 当自己score强，Trail放宽
+if oppositeScore > 0:
+    trailPct *= (1 - trailTightenRate * oppositeScore/24)
+if selfScore > minTotalScore:
+    trailPct *= (1 + trailLoosenRate * selfScore/24)
+```
+
+### Re-Entry v3逻辑
+```python
+# 退出后追踪高低点，等待回踩确认
+# Long Re-Entry条件:
+#   1. 上次退出方向=Long
+#   2. 回踩深度 >= rePullbackPct (0.5%)
+#   3. EMA确认: close > emaFast and close > emaSlow
+#   4. dipVoters >= reMinVoters (3)
+#   5. 冷却时间 >= reCooldownBars (5)
+#   6. 重入场次数 < reMaxEntries (3)
+#   7. 时间窗口 <= reMaxBarsWindow (80)
+```
+
+### Pullback v2逻辑
+```python
+# ADX强趋势中EMA回弹入场
+# Long Pullback条件:
+#   1. ADX >= adxStrong (25)
+#   2. 价格接近EMA: |close - emaSlow| <= pbMaxDist (0.3%)
+#   3. 回弹确认: 连续pbBounceBar根阳线
+#   4. pbMinVoters >= 2
+#   5. 止损压缩: SL = normal_SL * pbSLratio (0.65)
+```
+
+### 出场优先级
+```python
+# 1. 反向信号 → 关闭所有同方向仓位 + 开反向仓
+# 2. Trail触发 → 动态追踪止盈
+# 3. SL触发 → 固定止损
+# 4. 模式关闭: "Sadece Long"模式收到Peak信号 → 关闭Long（不开Short）
+```
+
 ### 成交量倍数逻辑
 ```
 # 强放量: vol_ratio >= 2.5 → multiplier = 1.25
