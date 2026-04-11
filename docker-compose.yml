@@ -1,6 +1,6 @@
 services:
   web:
-    image: nasplycc/luckyniumanote-web:v0.1.3
+    image: nasplycc/luckyniumanote-web:v0.1.8
     container_name: luckyniuma-web
     restart: unless-stopped
     env_file:

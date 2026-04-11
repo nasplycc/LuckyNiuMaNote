@@ -683,8 +683,10 @@ export default function DashboardPage() {
             <div><span>rsi</span><strong>RSI 强弱条件是否达标</strong></div>
             <div><span>volume</span><strong>成交量是否达到触发阈值</strong></div>
             <div><span>stabilizing</span><strong>价格是否出现企稳 / 反转确认</strong></div>
+            <div><span>Y委员会</span><strong>8组件投票验证信号质量</strong></div>
+            <div><span>market_score</span><strong>综合评分 0-100 分</strong></div>
           </div>
-          <div className="glossary-note">BTC 和 ETH 均为双向交易策略。缺失项越多，代表离入场条件越远；这不是报错，而是策略还没等到合适的 setup。</div>
+          <div className="glossary-note">BTC 和 ETH 均为双向交易策略。NFI信号触发后，Y(4.0)委员会8组件投票验证：至少5/8组件激活、总分≥10/24才能通过。缺失项越多，代表离入场条件越远；这不是报错，而是策略还没等到合适的 setup。</div>
         </CollapsibleSection>
 
         <CollapsibleSection title="信号诊断" badge={`${diagnostics.length} 个标的`} defaultOpen={false} className="diagnostic-panel">
