@@ -56,7 +56,7 @@ CONFIG = {
     "check_interval": 60,
     "trade_cooldown": 14400,
     "trade_side": "both",
-    "trade_side_by_symbol": {"BTC": "short_only", "ETH": "both"},
+    "trade_side_by_symbol": {"BTC": "both", "ETH": "both"},  # BTC 改为 both，允许做多
     "maker_fee": 0.0001,
     "taker_fee": 0.00035,
     "min_profit_after_fee": 0.005,
@@ -78,23 +78,23 @@ NFI_DEFAULTS = {
     "bb_period": 20,
     "bb_stddev": 2.0,
     "volume_sma_period": 30,
-    # === RSI 阈值下调：更容易触发信号 ===
-    "rsi_fast_buy": 28.0,  # 原 23.0 → 28.0 (更容易超卖触发)
-    "rsi_main_buy": 42.0,  # 原 36.0 → 42.0 (更容易超卖触发)
-    "rsi_fast_sell": 70.0,  # 原 75.0 → 70.0 (更容易超买触发)
-    "rsi_main_sell": 55.0,  # 原 60.0 → 55.0 (更容易超买触发)
+    # === RSI 阈值大幅下调：更容易触发信号 ===
+    "rsi_fast_buy": 35.0,  # 原 28.0 → 35.0 (更宽松，适应震荡市场)
+    "rsi_main_buy": 48.0,  # 原 42.0 → 48.0 (更宽松)
+    "rsi_fast_sell": 65.0,  # 原 70.0 → 65.0 (更容易做空)
+    "rsi_main_sell": 52.0,  # 原 55.0 → 52.0 (更容易做空)
     # === 放宽布林带和价格条件 ===
-    "bb_touch_buffer": 1.02,  # 原 1.01 → 1.02 (更容易触及)
-    "ema_pullback_buffer": 0.99,  # 原 0.985 → 0.99 (更容易回踩)
-    "bb_reject_buffer": 0.98,  # 原 0.99 → 0.98 (更容易触及上轨)
-    "ema_bounce_buffer": 1.02,  # 原 1.015 → 1.02 (更容易反弹)
+    "bb_touch_buffer": 1.03,  # 原 1.02 → 1.03 (更宽松)
+    "ema_pullback_buffer": 0.985,  # 原 0.99 → 0.985 (更容易回踩)
+    "bb_reject_buffer": 0.97,  # 原 0.98 → 0.97 (更宽松)
+    "ema_bounce_buffer": 1.03,  # 原 1.02 → 1.03 (更宽松)
     # === 放宽趋势和破位条件 ===
     "regime_price_floor": 0.92,  # 原 0.95 → 0.92 (允许更深度回踩)
     "regime_price_ceiling": 1.08,  # 原 1.05 → 1.08 (允许更高反弹)
     "max_breakdown_pct": 0.15,  # 原 0.10 → 0.15 (允许更大破位)
     "max_breakout_pct": 0.15,  # 原 0.10 → 0.15 (允许更大突破)
     # === 降低成交量要求 ===
-    "min_volume_ratio": 0.35,  # 原 0.45 → 0.35 (更低成交量门槛)
+    "min_volume_ratio": 0.20,  # 原 0.35 → 0.20 (大幅降低，允许低成交量市场)
     # === 止损止盈调整：更激进 ===
     "stop_loss_atr_mult": 2.0,  # 原 2.4 → 2.0 (更紧止损，更快出场)
     "take_profit_atr_mult": 3.0,  # 原 4.0 → 3.0 (更容易止盈)
@@ -118,12 +118,12 @@ REGIME_SL_TP_ADJUSTMENTS = {
 
 NFI_SYMBOL_OVERRIDES = {
     "ETH": {
-        # ETH 波动更大，但也要降低门槛
-        "rsi_fast_buy": 26.0,  # 比 BTC 略低，但仍比原来宽松
-        "rsi_main_buy": 40.0,
-        "rsi_fast_sell": 68.0,
-        "rsi_main_sell": 53.0,
-        "min_volume_ratio": 0.30,  # ETH 成交量要求更低
+        # ETH 波动更大，参数更宽松
+        "rsi_fast_buy": 32.0,  # 原 26.0 → 32.0
+        "rsi_main_buy": 46.0,  # 原 40.0 → 46.0
+        "rsi_fast_sell": 62.0,  # 原 68.0 → 62.0
+        "rsi_main_sell": 50.0,  # 原 53.0 → 50.0
+        "min_volume_ratio": 0.18,  # 原 0.30 → 0.18
         "stop_loss_atr_mult": 2.2,  # 原 2.8 → 2.2 (更紧)
         "take_profit_atr_mult": 2.8,  # 原 2.8 → 2.8 (保持，ETH 波动大)
     }

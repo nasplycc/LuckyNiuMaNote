@@ -1,66 +1,35 @@
 services:
   web:
-    build:
-      context: .
-      dockerfile: Dockerfile.web
+    image: nasplycc/luckyniumanote-web:v0.1.3
     container_name: luckyniuma-web
+    restart: unless-stopped
     env_file:
       - .env
     environment:
-      NODE_ENV: ${NODE_ENV:-production}
+      NODE_ENV: production
       PORT: ${PORT:-5288}
-      LISTEN_HOST: ${LISTEN_HOST:-0.0.0.0}
-      SITE_PUBLIC_URL: ${SITE_PUBLIC_URL:-http://localhost:5288}
+      LISTEN_HOST: 0.0.0.0
+      SITE_PUBLIC_URL: http://localhost:${PORT:-5288}
     ports:
       - "${PORT:-5288}:${PORT:-5288}"
     volumes:
       - ./data-export:/app/data-export
       - ./logs:/app/logs
-    restart: unless-stopped
-
-  trader:
-    build:
-      context: .
-      dockerfile: Dockerfile.trader
-    container_name: luckyniuma-trader
-    env_file:
-      - .env
-    environment:
-      TZ: ${TZ:-Asia/Shanghai}
-      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
-      LUCKYNIUMA_WALLET: ${LUCKYNIUMA_WALLET:-}
-      HL_API_KEY: ${HL_API_KEY:-}
-      TRADER_MODE: ${TRADER_MODE:-monitor}
-    volumes:
-      - ./trading-scripts/state:/app/trading-scripts/state
-      - ./trading-scripts/config:/app/trading-scripts/config
-      - ./data-export:/app/data-export
-      - ./logs:/app/logs
-    working_dir: /app/trading-scripts
-    command: ["python", "scripts/auto_trader_nostalgia_for_infinity.py"]
-    restart: on-failure:3
-    profiles: ["trader"]
 
   exporter:
-    build:
-      context: .
-      dockerfile: Dockerfile.trader
+    image: nasplycc/luckyniumanote-trader:v0.1.3
     container_name: luckyniuma-exporter
+    restart: unless-stopped
     env_file:
       - .env
     environment:
       TZ: ${TZ:-Asia/Shanghai}
-      PYTHONUNBUFFERED: ${PYTHONUNBUFFERED:-1}
-      LUCKYNIUMA_WALLET: ${LUCKYNIUMA_WALLET:-}
-      HL_API_KEY: ${HL_API_KEY:-}
+      PYTHONUNBUFFERED: 1
+      LUCKYNIUMA_WALLET: ${LUCKYNIUMA_WALLET}
+      HL_API_KEY: ${HL_API_KEY}
       TRADER_MODE: ${TRADER_MODE:-monitor}
-    volumes:
-      - ./trading-scripts/state:/app/trading-scripts/state
-      - ./trading-scripts/config:/app/trading-scripts/config
-      - ./data-export:/app/data-export
-      - ./logs:/app/logs
-      - ./frontend/public:/app/frontend/public
-      - ./frontend/dist:/app/frontend/dist
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+      TG_CHAT_ID: ${TG_CHAT_ID}
     working_dir: /app/trading-scripts
     command:
       - /bin/sh
@@ -71,5 +40,34 @@ services:
           python generate_realtime_data.py || true
           sleep 30
         done
+    volumes:
+      - ./trading-scripts:/app/trading-scripts
+      - ./trading-scripts/state:/app/trading-scripts/state
+      - ./trading-scripts/config:/app/trading-scripts/config
+      - ./data-export:/app/data-export
+      - ./logs:/app/logs
+      - ./frontend/public:/app/frontend/public
+      - ./frontend/dist:/app/frontend/dist
+
+  trader:
+    image: nasplycc/luckyniumanote-trader:v0.1.3
+    container_name: luckyniuma-trader
     restart: unless-stopped
-    profiles: ["exporter"]
+    env_file:
+      - .env
+    environment:
+      TZ: ${TZ:-Asia/Shanghai}
+      PYTHONUNBUFFERED: 1
+      LUCKYNIUMA_WALLET: ${LUCKYNIUMA_WALLET}
+      HL_API_KEY: ${HL_API_KEY}
+      TRADER_MODE: ${TRADER_MODE:-live}
+      TG_BOT_TOKEN: ${TG_BOT_TOKEN}
+      TG_CHAT_ID: ${TG_CHAT_ID}
+    working_dir: /app/trading-scripts
+    command: ["python", "scripts/auto_trader_nostalgia_for_infinity.py"]
+    volumes:
+      - ./trading-scripts:/app/trading-scripts
+      - ./trading-scripts/state:/app/trading-scripts/state
+      - ./trading-scripts/config:/app/trading-scripts/config
+      - ./data-export:/app/data-export
+      - ./logs:/app/logs
