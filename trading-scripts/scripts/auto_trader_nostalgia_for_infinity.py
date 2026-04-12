@@ -419,14 +419,31 @@ class NostalgiaForInfinityTrader:
         )
         return normalized_f
 
+
+    def _format_trigger_price(self, symbol: str, price: float) -> float:
+        """Format trigger price to satisfy Hyperliquid's precision requirements.
+        Mimics SDK's _slippage_price logic: 5 significant figures, then round to appropriate decimals.
+        """
+        if not self.exchange:
+            return round(float(f"{price:.5g}"), 1)
+        asset = self.exchange.info.coin_to_asset.get(symbol)
+        if asset is None or asset >= 10000:  # spot assets start at 10000
+            return round(float(f"{price:.5g}"), 1)
+        sz_decimals = self.exchange.info.asset_to_sz_decimals.get(asset, 5)
+        round_digits = 6 - sz_decimals
+        return round(float(f"{price:.5g}"), max(round_digits, 0))
+
     def _build_position_tpsl_order(self, symbol: str, is_buy: bool, size: float, trigger_price: float, kind: str) -> Dict:
-        # Use SDK's own price formatting to ensure valid tick size
-        limit_px = self.exchange._slippage_price(symbol, is_buy, Exchange.DEFAULT_SLIPPAGE, trigger_price)
+        # Format trigger price to satisfy Hyperliquid's tick size precision
+        formatted_trigger = self._format_trigger_price(symbol, trigger_price)
+        # Use SDK's own price formatting for limit_px
+        limit_px = self.exchange._slippage_price(symbol, is_buy, Exchange.DEFAULT_SLIPPAGE, trigger_price) if self.exchange else formatted_trigger
         logger.info(
-            "%s %s order prepared: trigger=%s limit_px=%s size=%s side=%s",
+            "%s %s order prepared: trigger=%s (formatted=%s) limit_px=%s size=%s side=%s",
             symbol,
             kind,
             trigger_price,
+            formatted_trigger,
             limit_px,
             size,
             "BUY" if is_buy else "SELL",
@@ -436,7 +453,7 @@ class NostalgiaForInfinityTrader:
             "is_buy": is_buy,
             "sz": size,
             "limit_px": limit_px,
-            "order_type": {"trigger": {"triggerPx": trigger_price, "isMarket": True, "tpsl": kind}},
+            "order_type": {"trigger": {"triggerPx": formatted_trigger, "isMarket": True, "tpsl": kind}},
             "reduce_only": True,
         }
 
