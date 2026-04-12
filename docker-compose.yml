@@ -17,7 +17,7 @@ services:
       - ./logs:/app/logs
 
   exporter:
-    image: nasplycc/luckyniumanote-trader:v0.2.3
+    image: nasplycc/luckyniumanote-trader:v0.2.4
     container_name: luckyniuma-exporter
     restart: unless-stopped
     env_file:
@@ -50,7 +50,7 @@ services:
       - ./frontend/dist:/app/frontend/dist
 
   trader:
-    image: nasplycc/luckyniumanote-trader:v0.2.3
+    image: nasplycc/luckyniumanote-trader:v0.2.4
     container_name: luckyniuma-trader
     restart: unless-stopped
     env_file:
