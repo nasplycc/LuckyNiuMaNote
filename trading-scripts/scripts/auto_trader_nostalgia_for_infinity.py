@@ -569,12 +569,17 @@ class NostalgiaForInfinityTrader:
             data = response.get("data", {}) if isinstance(response, dict) else {}
             statuses = data.get("statuses", []) if isinstance(data, dict) else []
 
-        stop_status = statuses[0] if len(statuses) > 0 and isinstance(statuses[0], dict) else {}
-        tp_status = statuses[1] if len(statuses) > 1 and isinstance(statuses[1], dict) else {}
+        # Parse statuses - can be dict with oid or string like 'waitingForTrigger'
+        stop_status_raw = statuses[0] if len(statuses) > 0 else None
+        tp_status_raw = statuses[1] if len(statuses) > 1 else None
+        stop_status = stop_status_raw if isinstance(stop_status_raw, dict) else {}
+        tp_status = tp_status_raw if isinstance(tp_status_raw, dict) else {}
+        # Extract order id from dict, or use placeholder for 'waitingForTrigger' string
         stop_oid = str((stop_status.get("resting") or {}).get("oid") or (stop_status.get("filled") or {}).get("oid") or "") or None
         tp_oid = str((tp_status.get("resting") or {}).get("oid") or (tp_status.get("filled") or {}).get("oid") or "") or None
-        stop_ok = bool(stop_oid)
-        tp_ok = bool(tp_oid)
+        # waitingForTrigger string indicates successful submission
+        stop_ok = bool(stop_oid) or stop_status_raw == "waitingForTrigger"
+        tp_ok = bool(tp_oid) or tp_status_raw == "waitingForTrigger"
         self.store.record_order(symbol, "SL", "BUY" if close_side else "SELL", stop_oid, None, float(signal["stop_loss"]), size, "submitted" if stop_ok else "error", stop_status or grouped_result)
         self.store.record_order(symbol, "TP", "BUY" if close_side else "SELL", tp_oid, None, float(signal["take_profit"]), size, "submitted" if tp_ok else "error", tp_status or grouped_result)
 
