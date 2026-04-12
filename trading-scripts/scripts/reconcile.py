@@ -89,6 +89,10 @@ def reconcile_exchange_state(
         else:
             store.record_event("WARN", "reconcile_warn", "Startup reconciliation warnings in monitor-only mode", {"issues": result["issues"]})
     else:
+        # If SAFE_MODE was triggered by previous reconciliation failure, auto-clear it
+        if guard.in_safe_mode() and "reconciliation" in str(guard.state.get("safe_reason", "")).lower():
+            guard.exit_safe_mode()
+            store.record_event("INFO", "safe_mode_exit", "SAFE_MODE auto-cleared after successful reconciliation", {})
         store.record_event("INFO", "reconcile_ok", "Startup reconciliation passed", {})
 
     return result
